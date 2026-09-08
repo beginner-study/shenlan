@@ -1,0 +1,11 @@
+# 构建产物
+build/
+
+# IDE
+.vs/
+*.user
+*.suo
+
+# 系统文件
+Thumbs.db
+desktop.ini
