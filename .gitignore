@@ -1,6 +1,9 @@
 # 构建产物
 build/
 
+# 本地构建工具（便携版 Inno Setup 等）
+.tools/
+
 # IDE
 .vs/
 *.user

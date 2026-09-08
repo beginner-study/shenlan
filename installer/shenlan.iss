@@ -32,7 +32,8 @@ MinVersion=10.0
 DisableProgramGroupPage=yes
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "compiler:Languages\ChineseSimplified.isl"
+; 简体中文翻译文件来自 Inno Setup 官方翻译库，随仓库分发，无需单独安装
+Name: "chinesesimplified"; MessagesFile: "ChineseSimplified.isl"
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
