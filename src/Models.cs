@@ -42,7 +42,7 @@ namespace DeepBlue
     {
         public const string Name = "深蓝";
         public const string NameEn = "DeepBlue";
-        public const string Version = "1.0.0";
+        public const string Version = "1.1.0";
         public const string RepoUrl = "https://github.com/beginner-study/shenlan";
         public const string SampleVoiceText = "你好，我是深蓝，这是语音试听。";
     }

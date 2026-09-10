@@ -6,7 +6,7 @@
 
 #define MyAppName "深蓝 DeepBlue"
 #define MyAppNameEn "DeepBlue"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "DeepBlue Project"
 #define MyAppExeName "DeepBlue.exe"
 

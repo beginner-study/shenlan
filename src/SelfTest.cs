@@ -39,6 +39,25 @@ namespace DeepBlue
                 check("时间校验-25:00非法", !ScriptEngine.IsValidTime("25:00"));
                 check("时间校验-9:3非法", !ScriptEngine.IsValidTime("9:3"));
 
+                List<string> sysOnly = new List<string>();
+                sysOnly.Add("Microsoft Huihui Desktop");
+                sysOnly.Add("Microsoft Zira Desktop");
+                check("默认语音-无自然语音返回空",
+                    VoicePicker.PickDefault(sysOnly) == "");
+
+                List<string> withNatural = new List<string>();
+                withNatural.Add("Microsoft Huihui Desktop");
+                withNatural.Add("Microsoft Zira Desktop");
+                withNatural.Add("Microsoft Xiaoxiao");
+                check("默认语音-存在晓晓优先晓晓",
+                    VoicePicker.PickDefault(withNatural) == "Microsoft Xiaoxiao");
+
+                List<string> onlineOnly = new List<string>();
+                onlineOnly.Add("Microsoft Huihui Desktop");
+                onlineOnly.Add("Microsoft Xiaoxiao (Natural) - Chinese (Mainland) (Online)");
+                check("默认语音-忽略在线语音",
+                    VoicePicker.PickDefault(onlineOnly) == "");
+
                 DateTime today = DateTime.Today;
 
                 ScheduleItem weekly = new ScheduleItem();

@@ -1,0 +1,19 @@
+深蓝语音增强包 - 第三方组件声明
+================================
+
+1. NaturalVoiceSAPIAdapter
+   作者: gexgd0419 (https://github.com/gexgd0419/NaturalVoiceSAPIAdapter)
+   许可证: MIT License
+   用途: 将微软自然语音桥接为 SAPI 5 语音引擎，使第三方程序可以调用。
+   说明: 本项目使用了从系统文件中提取的解密密钥来加载语音，属于非官方方案，
+         可能随 Windows 更新失效，详见其项目页面的说明。
+
+2. Microsoft Xiaoxiao (晓晓) 自然语音数据
+   版权所有: Microsoft Corporation
+   来源: 微软商店语音包（版本 1.0.9.0，经 NaturalVoiceSAPIAdapter 项目
+         社区镜像 https://www.nvdacn.com 分发）
+   用途: 仅供个人使用，随本增强包安装到本机，请勿二次分发。
+
+3. 深蓝 DeepBlue 本体（MIT License，见主程序仓库）
+   本增强包与深蓝主程序相互独立：未安装深蓝时语音增强包同样可为任何
+   SAPI 5 程序提供晓晓语音；卸载增强包不影响深蓝主程序（将回退到系统语音）。

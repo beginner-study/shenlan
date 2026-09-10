@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Drawing;
 using System.Windows.Forms;
 
@@ -73,7 +74,17 @@ namespace DeepBlue
             {
                 if ((string)_cboVoice.Items[i] == _store.Settings.VoiceName) { selIdx = i; break; }
             }
-            if (selIdx < 0 && _cboVoice.Items.Count > 0) selIdx = 0;
+            if (selIdx < 0 && _cboVoice.Items.Count > 0)
+            {
+                List<string> names = new List<string>();
+                foreach (object o in _cboVoice.Items) names.Add((string)o);
+                string pref = VoicePicker.PickDefault(names);
+                for (int i = 0; i < _cboVoice.Items.Count; i++)
+                {
+                    if ((string)_cboVoice.Items[i] == pref) { selIdx = i; break; }
+                }
+                if (selIdx < 0) selIdx = 0;
+            }
             _cboVoice.SelectedIndex = selIdx;
             c1.Controls.Add(_cboVoice);
 

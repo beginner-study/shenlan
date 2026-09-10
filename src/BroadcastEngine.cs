@@ -5,6 +5,36 @@ using System.Speech.Synthesis;
 
 namespace DeepBlue
 {
+    public static class VoicePicker
+    {
+        private static readonly string[] Preferred =
+        {
+            "Microsoft Xiaoxiao", "Microsoft Yunxi", "Microsoft Yunyang",
+            "Microsoft Xiaoyi", "Microsoft Yunjian"
+        };
+
+        public static string PickDefault(List<string> installed)
+        {
+            if (installed == null || installed.Count == 0) return "";
+            foreach (string p in Preferred)
+            {
+                foreach (string n in installed)
+                {
+                    if (string.Equals(n, p, StringComparison.OrdinalIgnoreCase)) return n;
+                }
+            }
+            foreach (string n in installed)
+            {
+                if (n.IndexOf("(Natural)", StringComparison.OrdinalIgnoreCase) >= 0 &&
+                    n.IndexOf("Online", StringComparison.OrdinalIgnoreCase) < 0)
+                {
+                    return n;
+                }
+            }
+            return "";
+        }
+    }
+
     public class BroadcastEngine
     {
         private SpeechSynthesizer _synth;
@@ -78,6 +108,20 @@ namespace DeepBlue
                         _synth.SelectVoice(v.VoiceInfo.Name);
                         picked = true;
                         break;
+                    }
+                }
+                if (!picked)
+                {
+                    List<string> names = new List<string>();
+                    foreach (InstalledVoice v in _synth.GetInstalledVoices())
+                    {
+                        if (v.Enabled) names.Add(v.VoiceInfo.Name);
+                    }
+                    string pref = VoicePicker.PickDefault(names);
+                    if (pref.Length > 0)
+                    {
+                        try { _synth.SelectVoice(pref); picked = true; }
+                        catch (Exception) { }
                     }
                 }
                 if (!picked)
