@@ -123,6 +123,11 @@ namespace DeepBlue
                 AppSettings qon = new AppSettings();
                 qon.WeatherOn = true;
 
+                check("和风坐标-经度在前两位小数",
+                    WeatherEngine.BuildQwCoords(39.9075, 116.3972) == "116.4,39.91");
+                check("和风坐标-零值",
+                    WeatherEngine.BuildQwCoords(0, 0) == "0,0");
+
                 DateTime today = DateTime.Today;
 
                 ScheduleItem weekly = new ScheduleItem();

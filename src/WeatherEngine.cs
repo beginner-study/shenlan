@@ -194,8 +194,8 @@ namespace DeepBlue
                 d.FetchDate = DateTime.Today.ToString("yyyy-MM-dd");
                 d.Tmax = ToDouble(Val(day, "tempMax"), double.NaN);
                 d.Tmin = ToDouble(Val(day, "tempMin"), double.NaN);
-                d.PrecipProb = ToInt(Val(day, "precipProb"), 0);
                 if (d.Text.Length == 0 || double.IsNaN(d.Tmax) || double.IsNaN(d.Tmin)) return null;
+                d.PrecipProb = FetchQwPop(s);
                 return d;
             }
             catch (Exception ex)
@@ -205,9 +205,61 @@ namespace DeepBlue
             }
         }
 
+        private static int FetchQwPop(AppSettings s)
+        {
+            try
+            {
+                Dictionary<string, string> headers = new Dictionary<string, string>();
+                headers["X-QW-Api-Key"] = s.QwKey;
+                string url = "https://" + s.QwHost + "/v7/weather/24h" +
+                    "?location=" + Uri.EscapeDataString(s.QwLocation) + "&lang=zh";
+                string json = HttpGet(url, FetchTimeoutMs, headers);
+                Dictionary<string, object> root = ParseObj(json);
+                if (root == null || Str(root, "code") != "200") return 0;
+                object hourlyObj;
+                if (!root.TryGetValue("hourly", out hourlyObj)) return 0;
+                object[] hours = hourlyObj as object[];
+                if (hours == null) return 0;
+                string today = DateTime.Today.ToString("yyyy-MM-dd");
+                int maxToday = -1;
+                int maxAll = 0;
+                foreach (object o in hours)
+                {
+                    Dictionary<string, object> hr = o as Dictionary<string, object>;
+                    if (hr == null) continue;
+                    int pop = ToInt(Val(hr, "pop"), 0);
+                    if (pop > maxAll) maxAll = pop;
+                    string fx = Str(hr, "fxTime");
+                    if (fx.Length >= 10 && fx.Substring(0, 10) == today && pop > maxToday)
+                    {
+                        maxToday = pop;
+                    }
+                }
+                return maxToday >= 0 ? maxToday : maxAll;
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
+        }
+
+        public static string BuildQwCoords(double lat, double lon)
+        {
+            System.Globalization.CultureInfo inv =
+                System.Globalization.CultureInfo.InvariantCulture;
+            return lon.ToString("0.##", inv) + "," + lat.ToString("0.##", inv);
+        }
+
         public static List<CityHit> SearchCity(string keyword, AppSettings s)
         {
-            if (s.WeatherSource == "qweather") return SearchQWeather(keyword, s);
+            if (s.WeatherSource == "qweather")
+            {
+                List<CityHit> qwHits = SearchQWeather(keyword, s);
+                if (qwHits.Count > 0) return qwHits;
+                List<CityHit> omHits = SearchOpenMeteo(keyword);
+                if (omHits.Count > 0) return omHits;
+                return qwHits;
+            }
             return SearchOpenMeteo(keyword);
         }
 
@@ -405,6 +457,7 @@ namespace DeepBlue
             req.ReadWriteTimeout = timeoutMs;
             req.UserAgent = "DeepBlue/" + AppInfo.Version;
             req.AllowAutoRedirect = true;
+            req.AutomaticDecompression = DecompressionMethods.GZip;
             if (headers != null)
             {
                 foreach (KeyValuePair<string, string> kv in headers)

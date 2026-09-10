@@ -381,13 +381,35 @@ namespace DeepBlue
             UpdateCityNow();
         }
 
+        private string EffectiveQwLocation()
+        {
+            if (_pickLoc.Length > 0) return _pickLoc;
+            if (_pickLat != 0 || _pickLon != 0)
+            {
+                return WeatherEngine.BuildQwCoords(_pickLat, _pickLon);
+            }
+            return "";
+        }
+
         private void UpdateCityNow()
         {
             if (_pickName.Length > 0)
             {
-                if (IsQwMode() && _pickLoc.Length > 0)
+                if (IsQwMode())
                 {
-                    _lblCityNow.Text = "当前：" + _pickName + "（和风 LocationID " + _pickLoc + "）";
+                    string loc = EffectiveQwLocation();
+                    if (loc.Length == 0)
+                    {
+                        _lblCityNow.Text = "当前：" + _pickName + "（请重新搜索一次城市以同步和风配置）";
+                    }
+                    else if (loc.IndexOf(',') >= 0)
+                    {
+                        _lblCityNow.Text = "当前：" + _pickName + "（和风坐标 " + loc + "）";
+                    }
+                    else
+                    {
+                        _lblCityNow.Text = "当前：" + _pickName + "（和风 LocationID " + loc + "）";
+                    }
                 }
                 else
                 {
@@ -485,7 +507,7 @@ namespace DeepBlue
                 _store.Settings.WeatherCity = _pickName;
                 _store.Settings.WeatherLat = _pickLat;
                 _store.Settings.WeatherLon = _pickLon;
-                _store.Settings.QwLocation = IsQwMode() ? _pickLoc : "";
+                _store.Settings.QwLocation = IsQwMode() ? EffectiveQwLocation() : "";
             }
             _store.Save();
             if (_store.Settings.WeatherOn && _store.Settings.WeatherCity.Length == 0)
