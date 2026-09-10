@@ -10,19 +10,28 @@ namespace DeepBlue
     public class WeatherData
     {
         public string City = "";
+        public string Source = "open-meteo";
+        public string Location = "";
         public double Lat;
         public double Lon;
+        public string Text = "";
         public string FetchDate = "";
         public int Code = -1;
         public double Tmax;
         public double Tmin;
         public int PrecipProb;
+
+        public bool IsQWeather
+        {
+            get { return Source == "qweather"; }
+        }
     }
 
     public class CityHit
     {
         public string Name = "";
         public string Display = "";
+        public string LocationId = "";
         public double Lat;
         public double Lon;
 
@@ -60,7 +69,13 @@ namespace DeepBlue
                 if (!File.Exists(CachePath)) return null;
                 JavaScriptSerializer ser = new JavaScriptSerializer();
                 WeatherData d = ser.Deserialize<WeatherData>(File.ReadAllText(CachePath));
-                if (d != null && d.City == null) d.City = "";
+                if (d != null)
+                {
+                    if (d.City == null) d.City = "";
+                    if (d.Source == null) d.Source = "open-meteo";
+                    if (d.Location == null) d.Location = "";
+                    if (d.Text == null) d.Text = "";
+                }
                 return d;
             }
             catch (Exception) { return null; }
@@ -87,9 +102,19 @@ namespace DeepBlue
         public static bool Matches(WeatherData d, AppSettings s)
         {
             if (d == null) return false;
-            return d.City == s.WeatherCity
+            if (s.WeatherSource == "qweather")
+            {
+                return d.IsQWeather && d.City == s.WeatherCity && d.Location == s.QwLocation;
+            }
+            return !d.IsQWeather && d.City == s.WeatherCity
                 && Math.Abs(d.Lat - s.WeatherLat) < 0.001
                 && Math.Abs(d.Lon - s.WeatherLon) < 0.001;
+        }
+
+        public static WeatherData Fetch(AppSettings s)
+        {
+            if (s.WeatherSource == "qweather") return FetchQWeather(s);
+            return Fetch(s.WeatherCity, s.WeatherLat, s.WeatherLon);
         }
 
         public static WeatherData Fetch(string city, double lat, double lon)
@@ -130,7 +155,63 @@ namespace DeepBlue
             }
         }
 
-        public static List<CityHit> SearchCity(string keyword)
+        private static WeatherData FetchQWeather(AppSettings s)
+        {
+            LastError = null;
+            if (s.QwHost.Length == 0 || s.QwKey.Length == 0 || s.QwLocation.Length == 0)
+            {
+                LastError = "QWeather config incomplete (host/key/location)";
+                return null;
+            }
+            try
+            {
+                Dictionary<string, string> headers = new Dictionary<string, string>();
+                headers["X-QW-Api-Key"] = s.QwKey;
+                string url = "https://" + s.QwHost + "/v7/weather/3d" +
+                    "?location=" + Uri.EscapeDataString(s.QwLocation) + "&lang=zh";
+                string json = HttpGet(url, FetchTimeoutMs, headers);
+                LastResponse = json;
+                Dictionary<string, object> root = ParseObj(json);
+                if (root == null) return null;
+                string code = Str(root, "code");
+                if (code != "200")
+                {
+                    LastError = "QWeather API code " + code + " " + Str(root, "error");
+                    return null;
+                }
+                object dailyObj;
+                if (!root.TryGetValue("daily", out dailyObj)) return null;
+                object[] dailyArr = dailyObj as object[];
+                if (dailyArr == null || dailyArr.Length == 0) return null;
+                Dictionary<string, object> day = dailyArr[0] as Dictionary<string, object>;
+                if (day == null) return null;
+
+                WeatherData d = new WeatherData();
+                d.City = s.WeatherCity;
+                d.Source = "qweather";
+                d.Location = s.QwLocation;
+                d.Text = Str(day, "textDay");
+                d.FetchDate = DateTime.Today.ToString("yyyy-MM-dd");
+                d.Tmax = ToDouble(Val(day, "tempMax"), double.NaN);
+                d.Tmin = ToDouble(Val(day, "tempMin"), double.NaN);
+                d.PrecipProb = ToInt(Val(day, "precipProb"), 0);
+                if (d.Text.Length == 0 || double.IsNaN(d.Tmax) || double.IsNaN(d.Tmin)) return null;
+                return d;
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.GetType().Name + ": " + ex.Message;
+                return null;
+            }
+        }
+
+        public static List<CityHit> SearchCity(string keyword, AppSettings s)
+        {
+            if (s.WeatherSource == "qweather") return SearchQWeather(keyword, s);
+            return SearchOpenMeteo(keyword);
+        }
+
+        private static List<CityHit> SearchOpenMeteo(string keyword)
         {
             List<CityHit> hits = new List<CityHit>();
             if (string.IsNullOrEmpty(keyword)) return hits;
@@ -160,6 +241,66 @@ namespace DeepBlue
                     string country = Str(r, "country");
                     StringBuilder disp = new StringBuilder(h.Name);
                     if (admin1.Length > 0 && admin1 != h.Name) disp.Append(" · ").Append(admin1);
+                    if (country.Length > 0) disp.Append("，").Append(country);
+                    h.Display = disp.ToString();
+                    hits.Add(h);
+                }
+            }
+            catch (Exception ex)
+            {
+                LastError = ex.GetType().Name + ": " + ex.Message;
+            }
+            return hits;
+        }
+
+        private static List<CityHit> SearchQWeather(string keyword, AppSettings s)
+        {
+            List<CityHit> hits = new List<CityHit>();
+            if (string.IsNullOrEmpty(keyword)) return hits;
+            string kw = keyword.Trim();
+            if (kw.Length == 0) return hits;
+            if (s.QwHost.Length == 0 || s.QwKey.Length == 0)
+            {
+                LastError = "QWeather host/key not set";
+                return hits;
+            }
+            try
+            {
+                Dictionary<string, string> headers = new Dictionary<string, string>();
+                headers["X-QW-Api-Key"] = s.QwKey;
+                string url = "https://" + s.QwHost + "/geo/v2/city/lookup" +
+                    "?location=" + Uri.EscapeDataString(kw) + "&lang=zh";
+                string json = HttpGet(url, SearchTimeoutMs, headers);
+                Dictionary<string, object> root = ParseObj(json);
+                if (root == null) return hits;
+                if (Str(root, "code") != "200")
+                {
+                    LastError = "QWeather API code " + Str(root, "code");
+                    return hits;
+                }
+                object locObj;
+                if (!root.TryGetValue("location", out locObj)) return hits;
+                object[] locs = locObj as object[];
+                if (locs == null) return hits;
+                foreach (object o in locs)
+                {
+                    Dictionary<string, object> r = o as Dictionary<string, object>;
+                    if (r == null) continue;
+                    CityHit h = new CityHit();
+                    h.Name = Str(r, "name");
+                    h.LocationId = Str(r, "id");
+                    h.Lat = ToDouble(Val(r, "lat"), double.NaN);
+                    h.Lon = ToDouble(Val(r, "lon"), double.NaN);
+                    if (h.Name.Length == 0 || h.LocationId.Length == 0) continue;
+                    string adm1 = Str(r, "adm1");
+                    string adm2 = Str(r, "adm2");
+                    string country = Str(r, "country");
+                    StringBuilder disp = new StringBuilder(h.Name);
+                    if (adm1.Length > 0 && adm1 != h.Name) disp.Append(" · ").Append(adm1);
+                    if (adm2.Length > 0 && adm2 != h.Name && adm2 != adm1)
+                    {
+                        disp.Append(" ").Append(adm2);
+                    }
                     if (country.Length > 0) disp.Append("，").Append(country);
                     h.Display = disp.ToString();
                     hits.Add(h);
@@ -225,11 +366,12 @@ namespace DeepBlue
         public static string Describe(WeatherData d)
         {
             if (d == null) return "";
+            string condition = d.Text.Length > 0 ? d.Text : CodeToCn(d.Code);
             int tmax = (int)Math.Round(d.Tmax, MidpointRounding.AwayFromZero);
             int tmin = (int)Math.Round(d.Tmin, MidpointRounding.AwayFromZero);
             StringBuilder sb = new StringBuilder();
             if (!string.IsNullOrEmpty(d.City)) sb.Append(d.City);
-            sb.Append("今天").Append(CodeToCn(d.Code))
+            sb.Append("今天").Append(condition)
               .Append("，最高").Append(tmax).Append("度，最低").Append(tmin).Append("度");
             if (d.PrecipProb >= 30) sb.Append("，降水概率").Append(CnPercent(d.PrecipProb));
             sb.Append("。");
@@ -243,7 +385,8 @@ namespace DeepBlue
             int tmin = (int)Math.Round(d.Tmin, MidpointRounding.AwayFromZero);
             System.Globalization.CultureInfo inv =
                 System.Globalization.CultureInfo.InvariantCulture;
-            string s = d.City + " " + CodeToCn(d.Code) + " " +
+            string condition = d.Text.Length > 0 ? d.Text : CodeToCn(d.Code);
+            string s = d.City + " " + condition + " " +
                 tmin.ToString(inv) + "~" + tmax.ToString(inv) + "°C";
             if (d.PrecipProb >= 30) s += " · 降水概率" + d.PrecipProb + "%";
             return s;
@@ -251,12 +394,24 @@ namespace DeepBlue
 
         private static string HttpGet(string url, int timeoutMs)
         {
+            return HttpGet(url, timeoutMs, null);
+        }
+
+        private static string HttpGet(string url, int timeoutMs, Dictionary<string, string> headers)
+        {
             HttpWebRequest req = (HttpWebRequest)WebRequest.Create(url);
             req.Method = "GET";
             req.Timeout = timeoutMs;
             req.ReadWriteTimeout = timeoutMs;
             req.UserAgent = "DeepBlue/" + AppInfo.Version;
             req.AllowAutoRedirect = true;
+            if (headers != null)
+            {
+                foreach (KeyValuePair<string, string> kv in headers)
+                {
+                    req.Headers[kv.Key] = kv.Value;
+                }
+            }
             using (HttpWebResponse resp = (HttpWebResponse)req.GetResponse())
             using (Stream s = resp.GetResponseStream())
             using (StreamReader sr = new StreamReader(s, Encoding.UTF8))
@@ -298,6 +453,11 @@ namespace DeepBlue
             if (o is int) return (int)o;
             if (o is double) return (int)Math.Round((double)o, MidpointRounding.AwayFromZero);
             if (o is decimal) return (int)Math.Round((decimal)o, MidpointRounding.AwayFromZero);
+            if (o is string)
+            {
+                int i;
+                if (int.TryParse((string)o, out i)) return i;
+            }
             return fallback;
         }
 
@@ -306,6 +466,11 @@ namespace DeepBlue
             if (o is int) return (int)o;
             if (o is double) return (double)o;
             if (o is decimal) return (double)(decimal)o;
+            if (o is string)
+            {
+                double v;
+                if (double.TryParse((string)o, out v)) return v;
+            }
             return fallback;
         }
     }

@@ -253,19 +253,18 @@ namespace DeepBlue
                 return;
             }
             UpdateWeatherUi(null, true);
-            string city = s.WeatherCity;
-            double lat = s.WeatherLat;
-            double lon = s.WeatherLon;
+            AppSettings wsnap = _store.Settings;
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                WeatherData d = WeatherEngine.Fetch(city, lat, lon);
+                WeatherData d = WeatherEngine.Fetch(wsnap);
                 if (d != null) WeatherEngine.SaveCache(d);
                 try
                 {
                     BeginInvoke((Action)(delegate
                     {
                         if (IsDisposed || _store == null) return;
-                        if (_store.Settings.WeatherCity != city) return;
+                        if (_store.Settings.WeatherCity != wsnap.WeatherCity ||
+                            _store.Settings.WeatherSource != wsnap.WeatherSource) return;
                         if (d != null) _weather = d;
                         UpdateWeatherUi(d, false);
                     }));
@@ -317,7 +316,9 @@ namespace DeepBlue
         {
             if (_store == null) return;
             AppSettings s = _store.Settings;
-            bool weatherUsable = s.WeatherOn && !string.IsNullOrEmpty(s.WeatherCity);
+            bool qwReady = s.WeatherSource != "qweather" ||
+                (s.QwHost.Length > 0 && s.QwKey.Length > 0 && s.QwLocation.Length > 0);
+            bool weatherUsable = s.WeatherOn && !string.IsNullOrEmpty(s.WeatherCity) && qwReady;
             if (!s.SecDate && !s.SecToday && !s.SecDue && !weatherUsable)
             {
                 MessageBox.Show("所有播报段落均已关闭，请在设置中开启。",

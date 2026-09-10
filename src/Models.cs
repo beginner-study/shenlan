@@ -40,13 +40,17 @@ namespace DeepBlue
         public string WeatherCity = "";
         public double WeatherLat = 0;
         public double WeatherLon = 0;
+        public string WeatherSource = "open-meteo";
+        public string QwHost = "";
+        public string QwKey = "";
+        public string QwLocation = "";
     }
 
     public static class AppInfo
     {
         public const string Name = "深蓝";
         public const string NameEn = "DeepBlue";
-        public const string Version = "1.2.0";
+        public const string Version = "1.3.0";
         public const string RepoUrl = "https://github.com/beginner-study/shenlan";
         public const string SampleVoiceText = "你好，我是深蓝，这是语音试听。";
     }
@@ -157,6 +161,11 @@ namespace DeepBlue
         {
             if (s.VoiceName == null) s.VoiceName = "";
             if (s.WeatherCity == null) s.WeatherCity = "";
+            if (s.QwHost == null) s.QwHost = "";
+            if (s.QwKey == null) s.QwKey = "";
+            if (s.QwLocation == null) s.QwLocation = "";
+            if (s.WeatherSource != "qweather") s.WeatherSource = "open-meteo";
+            s.QwHost = s.QwHost.Trim().TrimEnd('/').Replace("https://", "").Replace("http://", "");
             if (s.Rate < 0.5) s.Rate = 0.5;
             if (s.Rate > 2.0) s.Rate = 2.0;
             if (s.WindowDays < 1) s.WindowDays = 1;

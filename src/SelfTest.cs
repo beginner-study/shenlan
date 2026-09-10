@@ -100,6 +100,29 @@ namespace DeepBlue
                     wc != null && wc.City == "北京市" && wc.Code == 61 && wc.PrecipProb == 10 &&
                     WeatherEngine.IsFresh(wc));
 
+                WeatherData qw = new WeatherData();
+                qw.City = "北京市";
+                qw.Source = "qweather";
+                qw.Location = "101010100";
+                qw.Text = "多云";
+                qw.Tmax = 27;
+                qw.Tmin = 14;
+                qw.FetchDate = ScriptEngine.ToDateStr(DateTime.Today);
+                check("天气描述-和风Text优先",
+                    WeatherEngine.Describe(qw) == "北京市今天多云，最高27度，最低14度。");
+
+                AppSettings qs = new AppSettings();
+                qs.WeatherSource = "qweather";
+                qs.WeatherCity = "北京市";
+                qs.QwLocation = "101010100";
+                check("缓存匹配-和风设置匹配和风数据", WeatherEngine.Matches(qw, qs));
+                check("缓存匹配-和风设置不匹配OpenMeteo数据", !WeatherEngine.Matches(wd, qs));
+                qs.WeatherSource = "open-meteo";
+                check("缓存匹配-OpenMeteo设置不匹配和风数据", !WeatherEngine.Matches(qw, qs));
+
+                AppSettings qon = new AppSettings();
+                qon.WeatherOn = true;
+
                 DateTime today = DateTime.Today;
 
                 ScheduleItem weekly = new ScheduleItem();
@@ -156,6 +179,8 @@ namespace DeepBlue
                     !Join(ScriptEngine.Compose(items, new AppSettings(), wd)).Contains("北京市今天"));
                 check("播报稿-天气数据过期不播报",
                     !Join(ScriptEngine.Compose(items, ws, stale)).Contains("北京市今天"));
+                check("播报稿-和风天气段",
+                    Join(ScriptEngine.Compose(items, qon, qw)).Contains("北京市今天多云"));
 
                 AppSettings s = new AppSettings();
                 List<string> script = ScriptEngine.Compose(items, s);
@@ -184,6 +209,10 @@ namespace DeepBlue
                 store.Settings.WeatherCity = "北京市";
                 store.Settings.WeatherLat = 39.9075;
                 store.Settings.WeatherLon = 116.3972;
+                store.Settings.WeatherSource = "qweather";
+                store.Settings.QwHost = "abc123.re.qweatherapi.com";
+                store.Settings.QwKey = "testkey123";
+                store.Settings.QwLocation = "101010100";
                 store.Save();
                 if (Store.LastSaveError != null) log.Add("[INFO] Save error: " + Store.LastSaveError);
 
@@ -195,6 +224,11 @@ namespace DeepBlue
                     loaded.Settings.WeatherOn && loaded.Settings.WeatherCity == "北京市" &&
                     Math.Abs(loaded.Settings.WeatherLat - 39.9075) < 0.0001 &&
                     Math.Abs(loaded.Settings.WeatherLon - 116.3972) < 0.0001);
+                check("存储-和风配置往返一致",
+                    loaded.Settings.WeatherSource == "qweather" &&
+                    loaded.Settings.QwHost == "abc123.re.qweatherapi.com" &&
+                    loaded.Settings.QwKey == "testkey123" &&
+                    loaded.Settings.QwLocation == "101010100");
                 check("存储-临时字段未序列化",
                     !File.ReadAllText(Path.Combine(Store.DataDir, "data.json")).Contains("ConfirmUntil"));
             }

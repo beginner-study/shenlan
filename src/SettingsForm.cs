@@ -20,9 +20,14 @@ namespace DeepBlue
         private Button _btnSearch;
         private ComboBox _cboHits;
         private Label _lblCityNow;
+        private ComboBox _cboSource;
+        private TextBox _txtQwHost;
+        private TextBox _txtQwKey;
+        private Label _lblSourceTag;
         private string _pickName = "";
         private double _pickLat;
         private double _pickLon;
+        private string _pickLoc = "";
 
         public SettingsForm(Store store)
         {
@@ -30,11 +35,12 @@ namespace DeepBlue
             _pickName = _store.Settings.WeatherCity;
             _pickLat = _store.Settings.WeatherLat;
             _pickLon = _store.Settings.WeatherLon;
+            _pickLoc = _store.Settings.QwLocation;
             Text = AppInfo.Name + " · 设置";
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.Sizable;
-            Size = new Size(620, 788);
-            MinimumSize = new Size(580, 748);
+            Size = new Size(620, 892);
+            MinimumSize = new Size(580, 852);
             Font = Ui.F(9F);
             BackColor = Ui.Bg;
             Icon = MainForm.LoadIcon();
@@ -176,31 +182,68 @@ namespace DeepBlue
             _chkDue.Location = new Point(230, 78);
             c3.Controls.Add(_chkDue);
 
-            Panel c4 = AddCard(368, 150);
-            Label t4 = Ui.CardTitle("天气城市");
+            Panel c4 = AddCard(368, 244);
+            Label t4 = Ui.CardTitle("天气");
             t4.Location = new Point(20, 14);
             c4.Controls.Add(t4);
 
-            Label tag = new Label();
-            tag.Text = "数据源 Open-Meteo · 需联网";
-            tag.Font = Ui.F(8F);
-            tag.ForeColor = Ui.Accent;
-            tag.BackColor = Ui.AccentSoft;
-            tag.AutoSize = false;
-            tag.Width = 152;
-            tag.Height = 22;
-            tag.Location = new Point(96, 12);
-            tag.TextAlign = ContentAlignment.MiddleCenter;
-            c4.Controls.Add(tag);
+            _lblSourceTag = new Label();
+            _lblSourceTag.Font = Ui.F(8F);
+            _lblSourceTag.ForeColor = Ui.Accent;
+            _lblSourceTag.BackColor = Ui.AccentSoft;
+            _lblSourceTag.AutoSize = false;
+            _lblSourceTag.Width = 140;
+            _lblSourceTag.Height = 22;
+            _lblSourceTag.Location = new Point(60, 12);
+            _lblSourceTag.TextAlign = ContentAlignment.MiddleCenter;
+            c4.Controls.Add(_lblSourceTag);
+
+            Label lsrc = Ui.FieldLabel("数据源");
+            lsrc.Location = new Point(20, 52);
+            c4.Controls.Add(lsrc);
+
+            _cboSource = new ComboBox();
+            _cboSource.DropDownStyle = ComboBoxStyle.DropDownList;
+            _cboSource.Font = Ui.F(9F);
+            _cboSource.Width = 220;
+            _cboSource.Location = new Point(68, 48);
+            _cboSource.Items.Add("Open-Meteo（免费，无需 Key）");
+            _cboSource.Items.Add("和风天气（国内数据，需 Key）");
+            _cboSource.SelectedIndex =
+                _store.Settings.WeatherSource == "qweather" ? 1 : 0;
+            _cboSource.SelectedIndexChanged += delegate { OnSourceChanged(); };
+            c4.Controls.Add(_cboSource);
+
+            Label lhost = Ui.FieldLabel("API Host");
+            lhost.Location = new Point(20, 88);
+            c4.Controls.Add(lhost);
+
+            _txtQwHost = new TextBox();
+            _txtQwHost.Font = Ui.F(9F);
+            _txtQwHost.Width = 302;
+            _txtQwHost.Location = new Point(68, 84);
+            _txtQwHost.Text = _store.Settings.QwHost;
+            c4.Controls.Add(_txtQwHost);
+
+            Label lkey = Ui.FieldLabel("API Key");
+            lkey.Location = new Point(20, 122);
+            c4.Controls.Add(lkey);
+
+            _txtQwKey = new TextBox();
+            _txtQwKey.Font = Ui.F(9F);
+            _txtQwKey.Width = 302;
+            _txtQwKey.Location = new Point(68, 118);
+            _txtQwKey.Text = _store.Settings.QwKey;
+            c4.Controls.Add(_txtQwKey);
 
             Label lkw = Ui.FieldLabel("城市");
-            lkw.Location = new Point(20, 52);
+            lkw.Location = new Point(20, 156);
             c4.Controls.Add(lkw);
 
             _txtCity = new TextBox();
             _txtCity.Font = Ui.F(9F);
             _txtCity.Width = 220;
-            _txtCity.Location = new Point(68, 48);
+            _txtCity.Location = new Point(68, 152);
             _txtCity.KeyDown += delegate (object s, KeyEventArgs e)
             {
                 if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; OnSearchCity(); }
@@ -208,7 +251,7 @@ namespace DeepBlue
             c4.Controls.Add(_txtCity);
 
             _btnSearch = Ui.GhostButton("搜索", 72, 30);
-            _btnSearch.Location = new Point(298, 47);
+            _btnSearch.Location = new Point(298, 151);
             _btnSearch.Click += delegate { OnSearchCity(); };
             c4.Controls.Add(_btnSearch);
 
@@ -216,7 +259,7 @@ namespace DeepBlue
             _cboHits.DropDownStyle = ComboBoxStyle.DropDownList;
             _cboHits.Font = Ui.F(9F);
             _cboHits.Width = 302;
-            _cboHits.Location = new Point(68, 82);
+            _cboHits.Location = new Point(68, 186);
             _cboHits.Items.Add("（输入城市名后点击搜索）");
             _cboHits.SelectedIndex = 0;
             _cboHits.SelectedIndexChanged += delegate
@@ -230,11 +273,12 @@ namespace DeepBlue
             _lblCityNow.Font = Ui.F(8.5F);
             _lblCityNow.ForeColor = Ui.Muted;
             _lblCityNow.AutoSize = true;
-            _lblCityNow.Location = new Point(20, 122);
+            _lblCityNow.Location = new Point(20, 220);
             c4.Controls.Add(_lblCityNow);
             UpdateCityNow();
+            OnSourceChanged();
 
-            Panel c5 = AddCard(530, 96);
+            Panel c5 = AddCard(624, 96);
             Label t5 = Ui.CardTitle("关于");
             t5.Location = new Point(20, 14);
             c5.Controls.Add(t5);
@@ -320,15 +364,39 @@ namespace DeepBlue
             }
         }
 
+        private bool IsQwMode()
+        {
+            return _cboSource != null && _cboSource.SelectedIndex == 1;
+        }
+
+        private void OnSourceChanged()
+        {
+            bool qw = IsQwMode();
+            _txtQwHost.Enabled = qw;
+            _txtQwKey.Enabled = qw;
+            _txtQwHost.BackColor = qw ? SystemColors.Window : Ui.Bg;
+            _txtQwKey.BackColor = qw ? SystemColors.Window : Ui.Bg;
+            _lblSourceTag.Text = qw ? "和风天气 · 需联网" : "Open-Meteo · 免费免Key";
+            _lblSourceTag.Width = qw ? 130 : 140;
+            UpdateCityNow();
+        }
+
         private void UpdateCityNow()
         {
             if (_pickName.Length > 0)
             {
-                System.Globalization.CultureInfo inv =
-                    System.Globalization.CultureInfo.InvariantCulture;
-                _lblCityNow.Text = "当前：" + _pickName + "（" +
-                    _pickLat.ToString("0.####", inv) + ", " +
-                    _pickLon.ToString("0.####", inv) + "）";
+                if (IsQwMode() && _pickLoc.Length > 0)
+                {
+                    _lblCityNow.Text = "当前：" + _pickName + "（和风 LocationID " + _pickLoc + "）";
+                }
+                else
+                {
+                    System.Globalization.CultureInfo inv =
+                        System.Globalization.CultureInfo.InvariantCulture;
+                    _lblCityNow.Text = "当前：" + _pickName + "（" +
+                        _pickLat.ToString("0.####", inv) + ", " +
+                        _pickLon.ToString("0.####", inv) + "）";
+                }
             }
             else
             {
@@ -341,6 +409,7 @@ namespace DeepBlue
             _pickName = h.Name;
             _pickLat = h.Lat;
             _pickLon = h.Lon;
+            _pickLoc = h.LocationId;
             UpdateCityNow();
         }
 
@@ -353,11 +422,21 @@ namespace DeepBlue
                     MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
+            AppSettings snap = new AppSettings();
+            snap.WeatherSource = IsQwMode() ? "qweather" : "open-meteo";
+            snap.QwHost = _txtQwHost.Text.Trim();
+            snap.QwKey = _txtQwKey.Text.Trim();
+            if (IsQwMode() && (snap.QwHost.Length == 0 || snap.QwKey.Length == 0))
+            {
+                MessageBox.Show("使用和风天气前，请先填写 API Host 与 API Key（在和风天气开发者控制台 → 设置中查看）。",
+                    AppInfo.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
             _btnSearch.Enabled = false;
             _btnSearch.Text = "搜索中…";
             System.Threading.ThreadPool.QueueUserWorkItem(delegate
             {
-                List<CityHit> hits = WeatherEngine.SearchCity(kw);
+                List<CityHit> hits = WeatherEngine.SearchCity(kw, snap);
                 try
                 {
                     BeginInvoke((Action)(delegate
@@ -369,6 +448,10 @@ namespace DeepBlue
                         if (hits.Count == 0)
                         {
                             _cboHits.Items.Add("未找到城市，请换个关键词");
+                            if (WeatherEngine.LastError != null && WeatherEngine.LastError.Length > 0)
+                            {
+                                _cboHits.Items.Add("错误：" + WeatherEngine.LastError);
+                            }
                             _cboHits.SelectedIndex = 0;
                             return;
                         }
@@ -394,18 +477,30 @@ namespace DeepBlue
             _store.Settings.SecToday = _chkToday.Checked;
             _store.Settings.SecDue = _chkDue.Checked;
             _store.Settings.WeatherOn = _chkWeather.Checked;
+            _store.Settings.WeatherSource = IsQwMode() ? "qweather" : "open-meteo";
+            _store.Settings.QwHost = _txtQwHost.Text.Trim();
+            _store.Settings.QwKey = _txtQwKey.Text.Trim();
             if (_pickName.Length > 0)
             {
                 _store.Settings.WeatherCity = _pickName;
                 _store.Settings.WeatherLat = _pickLat;
                 _store.Settings.WeatherLon = _pickLon;
+                _store.Settings.QwLocation = IsQwMode() ? _pickLoc : "";
             }
             _store.Save();
             if (_store.Settings.WeatherOn && _store.Settings.WeatherCity.Length == 0)
             {
                 MessageBox.Show(
                     "设置已保存。天气播报已开启，但尚未设置城市，天气段将暂不播报。\n" +
-                    "请在「天气城市」中搜索并选择城市。",
+                    "请在「天气」卡片中搜索并选择城市。",
+                    AppInfo.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else if (_store.Settings.WeatherOn && _store.Settings.WeatherSource == "qweather" &&
+                     (_store.Settings.QwHost.Length == 0 || _store.Settings.QwKey.Length == 0 ||
+                      _store.Settings.QwLocation.Length == 0))
+            {
+                MessageBox.Show(
+                    "设置已保存。和风天气配置不完整（缺少 API Host、API Key 或城市 LocationID），天气段将暂不播报。",
                     AppInfo.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
             }
             else
