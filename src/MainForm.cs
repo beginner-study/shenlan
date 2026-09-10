@@ -15,6 +15,7 @@ namespace DeepBlue
         private BState _state = BState.Loading;
         private bool _voiceWarned;
         private bool _pendingStart;
+        private WeatherData _weather;
 
         private Panel _cardDate;
         private Label _lblDate;
@@ -226,6 +227,7 @@ namespace DeepBlue
             _sentLen.Clear();
             _curSent = -1;
             _lblReadyAt.Text = "数据就绪 · " + DateTime.Now.ToString("HH:mm");
+            StartWeather();
             if (_pendingStart)
             {
                 _pendingStart = false;
@@ -233,11 +235,70 @@ namespace DeepBlue
             }
         }
 
+        private void StartWeather()
+        {
+            _weather = null;
+            if (_store == null) return;
+            AppSettings s = _store.Settings;
+            if (!s.WeatherOn || string.IsNullOrEmpty(s.WeatherCity))
+            {
+                UpdateWeatherUi(null, false);
+                return;
+            }
+            WeatherData cached = WeatherEngine.LoadCache();
+            if (cached != null && WeatherEngine.IsFresh(cached) && WeatherEngine.Matches(cached, s))
+            {
+                _weather = cached;
+                UpdateWeatherUi(cached, false);
+                return;
+            }
+            UpdateWeatherUi(null, true);
+            string city = s.WeatherCity;
+            double lat = s.WeatherLat;
+            double lon = s.WeatherLon;
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                WeatherData d = WeatherEngine.Fetch(city, lat, lon);
+                if (d != null) WeatherEngine.SaveCache(d);
+                try
+                {
+                    BeginInvoke((Action)(delegate
+                    {
+                        if (IsDisposed || _store == null) return;
+                        if (_store.Settings.WeatherCity != city) return;
+                        if (d != null) _weather = d;
+                        UpdateWeatherUi(d, false);
+                    }));
+                }
+                catch (Exception) { }
+            });
+        }
+
+        private void UpdateWeatherUi(WeatherData d, bool fetching)
+        {
+            if (d != null)
+            {
+                _lblDateSub.Text = "数据就绪 · " + WeatherEngine.CardLine(d);
+            }
+            else if (fetching)
+            {
+                _lblDateSub.Text = "数据就绪 · 天气获取中…";
+            }
+            else if (_store != null && _store.Settings.WeatherOn &&
+                     !string.IsNullOrEmpty(_store.Settings.WeatherCity))
+            {
+                _lblDateSub.Text = "数据就绪 · 天气暂不可用（播报将跳过天气段）";
+            }
+            else
+            {
+                _lblDateSub.Text = "数据就绪 · 点击按钮开始播报";
+            }
+        }
+
         private void RefreshDateCard()
         {
             DateTime today = DateTime.Today;
             _lblDate.Text = ScriptEngine.CnDate(today) + " " + ScriptEngine.WeekName(today);
-            _lblDateSub.Text = "数据就绪 · 点击按钮开始播报（天气模块将在后续版本接入）";
             _cardDate.Invalidate();
         }
 
@@ -256,7 +317,8 @@ namespace DeepBlue
         {
             if (_store == null) return;
             AppSettings s = _store.Settings;
-            if (!s.SecDate && !s.SecToday && !s.SecDue)
+            bool weatherUsable = s.WeatherOn && !string.IsNullOrEmpty(s.WeatherCity);
+            if (!s.SecDate && !s.SecToday && !s.SecDue && !weatherUsable)
             {
                 MessageBox.Show("所有播报段落均已关闭，请在设置中开启。",
                     AppInfo.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
@@ -265,8 +327,7 @@ namespace DeepBlue
 
             if (_dataDay != DateTime.Today)
             {
-                _dataDay = DateTime.Today;
-                RefreshDateCard();
+                OnDataLoaded();
                 _lblReadyAt.Text = "检测到日期已变化，已自动重新取数 · " + DateTime.Now.ToString("HH:mm");
             }
 
@@ -279,7 +340,7 @@ namespace DeepBlue
                     AppInfo.Name, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
 
-            List<string> sents = ScriptEngine.Compose(_store.Items, s);
+            List<string> sents = ScriptEngine.Compose(_store.Items, s, _weather);
             RenderScript(sents);
             _engine.Play(sents, s.VoiceName, s.Rate);
             SetState(BState.Playing);
@@ -391,6 +452,7 @@ namespace DeepBlue
             {
                 f.ShowDialog(this);
             }
+            StartWeather();
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)

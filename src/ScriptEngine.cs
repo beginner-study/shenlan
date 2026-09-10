@@ -163,6 +163,11 @@ namespace DeepBlue
 
         public static List<string> Compose(List<ScheduleItem> items, AppSettings s)
         {
+            return Compose(items, s, null);
+        }
+
+        public static List<string> Compose(List<ScheduleItem> items, AppSettings s, WeatherData weather)
+        {
             DateTime now = DateTime.Now;
             DateTime today = now.Date;
             List<string> parts = new List<string>();
@@ -170,6 +175,12 @@ namespace DeepBlue
             if (s.SecDate)
             {
                 parts.Add(Greeting(now.Hour) + "。" + CnDate(today) + "，" + WeekName(today) + "。");
+            }
+
+            if (s.WeatherOn && weather != null && WeatherEngine.IsFresh(weather))
+            {
+                string w = WeatherEngine.Describe(weather);
+                if (w.Length > 0) parts.Add(w);
             }
 
             if (s.SecToday)

@@ -15,15 +15,26 @@ namespace DeepBlue
         private CheckBox _chkDate;
         private CheckBox _chkToday;
         private CheckBox _chkDue;
+        private CheckBox _chkWeather;
+        private TextBox _txtCity;
+        private Button _btnSearch;
+        private ComboBox _cboHits;
+        private Label _lblCityNow;
+        private string _pickName = "";
+        private double _pickLat;
+        private double _pickLon;
 
         public SettingsForm(Store store)
         {
             _store = store;
+            _pickName = _store.Settings.WeatherCity;
+            _pickLat = _store.Settings.WeatherLat;
+            _pickLon = _store.Settings.WeatherLon;
             Text = AppInfo.Name + " · 设置";
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.Sizable;
-            Size = new Size(620, 700);
-            MinimumSize = new Size(580, 660);
+            Size = new Size(620, 788);
+            MinimumSize = new Size(580, 748);
             Font = Ui.F(9F);
             BackColor = Ui.Bg;
             Icon = MainForm.LoadIcon();
@@ -152,10 +163,10 @@ namespace DeepBlue
             _chkDate.Location = new Point(20, 48);
             c3.Controls.Add(_chkDate);
 
-            CheckBox weather = MakeToggle("天气（后续版本启用）", true);
-            weather.Enabled = false;
+            CheckBox weather = MakeToggle("天气", _store.Settings.WeatherOn);
             weather.Location = new Point(20, 78);
             c3.Controls.Add(weather);
+            _chkWeather = weather;
 
             _chkToday = MakeToggle("今日安排", _store.Settings.SecToday);
             _chkToday.Location = new Point(230, 48);
@@ -165,33 +176,65 @@ namespace DeepBlue
             _chkDue.Location = new Point(230, 78);
             c3.Controls.Add(_chkDue);
 
-            Panel c4 = AddCard(368, 84);
-            c4.Enabled = true;
+            Panel c4 = AddCard(368, 150);
             Label t4 = Ui.CardTitle("天气城市");
             t4.Location = new Point(20, 14);
             c4.Controls.Add(t4);
 
             Label tag = new Label();
-            tag.Text = "后续版本启用";
+            tag.Text = "数据源 Open-Meteo · 需联网";
             tag.Font = Ui.F(8F);
             tag.ForeColor = Ui.Accent;
             tag.BackColor = Ui.AccentSoft;
             tag.AutoSize = false;
-            tag.Width = 88;
+            tag.Width = 152;
             tag.Height = 22;
-            tag.Location = new Point(110, 12);
+            tag.Location = new Point(96, 12);
             tag.TextAlign = ContentAlignment.MiddleCenter;
             c4.Controls.Add(tag);
 
-            Label lw = new Label();
-            lw.Text = "天气模块上线后启用，当前不可操作";
-            lw.Font = Ui.F(8.5F);
-            lw.ForeColor = Ui.Muted;
-            lw.AutoSize = true;
-            lw.Location = new Point(20, 50);
-            c4.Controls.Add(lw);
+            Label lkw = Ui.FieldLabel("城市");
+            lkw.Location = new Point(20, 52);
+            c4.Controls.Add(lkw);
 
-            Panel c5 = AddCard(464, 96);
+            _txtCity = new TextBox();
+            _txtCity.Font = Ui.F(9F);
+            _txtCity.Width = 220;
+            _txtCity.Location = new Point(68, 48);
+            _txtCity.KeyDown += delegate (object s, KeyEventArgs e)
+            {
+                if (e.KeyCode == Keys.Enter) { e.SuppressKeyPress = true; OnSearchCity(); }
+            };
+            c4.Controls.Add(_txtCity);
+
+            _btnSearch = Ui.GhostButton("搜索", 72, 30);
+            _btnSearch.Location = new Point(298, 47);
+            _btnSearch.Click += delegate { OnSearchCity(); };
+            c4.Controls.Add(_btnSearch);
+
+            _cboHits = new ComboBox();
+            _cboHits.DropDownStyle = ComboBoxStyle.DropDownList;
+            _cboHits.Font = Ui.F(9F);
+            _cboHits.Width = 302;
+            _cboHits.Location = new Point(68, 82);
+            _cboHits.Items.Add("（输入城市名后点击搜索）");
+            _cboHits.SelectedIndex = 0;
+            _cboHits.SelectedIndexChanged += delegate
+            {
+                CityHit h = _cboHits.SelectedItem as CityHit;
+                if (h != null) ApplyPick(h);
+            };
+            c4.Controls.Add(_cboHits);
+
+            _lblCityNow = new Label();
+            _lblCityNow.Font = Ui.F(8.5F);
+            _lblCityNow.ForeColor = Ui.Muted;
+            _lblCityNow.AutoSize = true;
+            _lblCityNow.Location = new Point(20, 122);
+            c4.Controls.Add(_lblCityNow);
+            UpdateCityNow();
+
+            Panel c5 = AddCard(530, 96);
             Label t5 = Ui.CardTitle("关于");
             t5.Location = new Point(20, 14);
             c5.Controls.Add(t5);
@@ -277,6 +320,67 @@ namespace DeepBlue
             }
         }
 
+        private void UpdateCityNow()
+        {
+            if (_pickName.Length > 0)
+            {
+                System.Globalization.CultureInfo inv =
+                    System.Globalization.CultureInfo.InvariantCulture;
+                _lblCityNow.Text = "当前：" + _pickName + "（" +
+                    _pickLat.ToString("0.####", inv) + ", " +
+                    _pickLon.ToString("0.####", inv) + "）";
+            }
+            else
+            {
+                _lblCityNow.Text = "当前：未设置";
+            }
+        }
+
+        private void ApplyPick(CityHit h)
+        {
+            _pickName = h.Name;
+            _pickLat = h.Lat;
+            _pickLon = h.Lon;
+            UpdateCityNow();
+        }
+
+        private void OnSearchCity()
+        {
+            string kw = _txtCity.Text.Trim();
+            if (kw.Length == 0)
+            {
+                MessageBox.Show("请输入城市名，如：北京、上海。", AppInfo.Name,
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            _btnSearch.Enabled = false;
+            _btnSearch.Text = "搜索中…";
+            System.Threading.ThreadPool.QueueUserWorkItem(delegate
+            {
+                List<CityHit> hits = WeatherEngine.SearchCity(kw);
+                try
+                {
+                    BeginInvoke((Action)(delegate
+                    {
+                        if (IsDisposed) return;
+                        _btnSearch.Enabled = true;
+                        _btnSearch.Text = "搜索";
+                        _cboHits.Items.Clear();
+                        if (hits.Count == 0)
+                        {
+                            _cboHits.Items.Add("未找到城市，请换个关键词");
+                            _cboHits.SelectedIndex = 0;
+                            return;
+                        }
+                        foreach (CityHit h in hits) _cboHits.Items.Add(h);
+                        _cboHits.SelectedIndex = 0;
+                        ApplyPick(hits[0]);
+                    }));
+                }
+                catch (Exception) { }
+            });
+        }
+
         private void SaveAll()
         {
             _store.Settings.VoiceName =
@@ -289,9 +393,26 @@ namespace DeepBlue
             _store.Settings.SecDate = _chkDate.Checked;
             _store.Settings.SecToday = _chkToday.Checked;
             _store.Settings.SecDue = _chkDue.Checked;
+            _store.Settings.WeatherOn = _chkWeather.Checked;
+            if (_pickName.Length > 0)
+            {
+                _store.Settings.WeatherCity = _pickName;
+                _store.Settings.WeatherLat = _pickLat;
+                _store.Settings.WeatherLon = _pickLon;
+            }
             _store.Save();
-            MessageBox.Show("设置已保存。", AppInfo.Name,
-                MessageBoxButtons.OK, MessageBoxIcon.Information);
+            if (_store.Settings.WeatherOn && _store.Settings.WeatherCity.Length == 0)
+            {
+                MessageBox.Show(
+                    "设置已保存。天气播报已开启，但尚未设置城市，天气段将暂不播报。\n" +
+                    "请在「天气城市」中搜索并选择城市。",
+                    AppInfo.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
+            else
+            {
+                MessageBox.Show("设置已保存。", AppInfo.Name,
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+            }
         }
     }
 }

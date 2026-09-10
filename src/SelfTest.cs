@@ -58,6 +58,48 @@ namespace DeepBlue
                 check("默认语音-忽略在线语音",
                     VoicePicker.PickDefault(onlineOnly) == "");
 
+                check("天气代码-0=晴", WeatherEngine.CodeToCn(0) == "晴");
+                check("天气代码-3=阴", WeatherEngine.CodeToCn(3) == "阴");
+                check("天气代码-61=小雨", WeatherEngine.CodeToCn(61) == "小雨");
+                check("天气代码-95=雷阵雨", WeatherEngine.CodeToCn(95) == "雷阵雨");
+                check("天气代码-未知=天气", WeatherEngine.CodeToCn(123) == "天气");
+
+                check("降水口语-30=百分之三十", WeatherEngine.CnPercent(30) == "百分之三十");
+                check("降水口语-55=百分之五十五", WeatherEngine.CnPercent(55) == "百分之五十五");
+                check("降水口语-100=百分之百", WeatherEngine.CnPercent(100) == "百分之百");
+
+                WeatherData wd = new WeatherData();
+                wd.City = "北京市";
+                wd.Code = 0;
+                wd.Tmax = 28.6;
+                wd.Tmin = 15.4;
+                wd.PrecipProb = 0;
+                wd.FetchDate = ScriptEngine.ToDateStr(DateTime.Today);
+                check("天气描述-晴无降水",
+                    WeatherEngine.Describe(wd) == "北京市今天晴，最高29度，最低15度。");
+
+                wd.Code = 61;
+                wd.PrecipProb = 60;
+                check("天气描述-含降水概率",
+                    WeatherEngine.Describe(wd) == "北京市今天小雨，最高29度，最低15度，降水概率百分之六十。");
+
+                wd.PrecipProb = 10;
+                check("天气描述-低降水不提及",
+                    !WeatherEngine.Describe(wd).Contains("降水概率"));
+
+                WeatherData stale = new WeatherData();
+                stale.City = "北京市";
+                stale.FetchDate = ScriptEngine.ToDateStr(DateTime.Today.AddDays(-1));
+                check("天气缓存-昨日数据过期", !WeatherEngine.IsFresh(stale));
+                check("天气缓存-今日数据新鲜", WeatherEngine.IsFresh(wd));
+                check("天气缓存-空数据过期", !WeatherEngine.IsFresh(null));
+
+                WeatherEngine.SaveCache(wd);
+                WeatherData wc = WeatherEngine.LoadCache();
+                check("天气缓存-文件往返一致",
+                    wc != null && wc.City == "北京市" && wc.Code == 61 && wc.PrecipProb == 10 &&
+                    WeatherEngine.IsFresh(wc));
+
                 DateTime today = DateTime.Today;
 
                 ScheduleItem weekly = new ScheduleItem();
@@ -104,6 +146,17 @@ namespace DeepBlue
                 check("截止提醒-包含窗口内P0", hasP0);
                 check("截止提醒-排除P2(窗口内)", !hasP2);
 
+                AppSettings ws = new AppSettings();
+                ws.WeatherOn = true;
+                List<string> wscript = ScriptEngine.Compose(items, ws, wd);
+                check("播报稿-含天气段", Join(wscript).Contains("北京市今天小雨"));
+                check("播报稿-天气段无额外降水字样", !Join(wscript).Contains("降水概率"));
+                check("播报稿-天气段位于日期之后", wscript[1].StartsWith("北京市今天小雨"));
+                check("播报稿-天气开关关闭不播报",
+                    !Join(ScriptEngine.Compose(items, new AppSettings(), wd)).Contains("北京市今天"));
+                check("播报稿-天气数据过期不播报",
+                    !Join(ScriptEngine.Compose(items, ws, stale)).Contains("北京市今天"));
+
                 AppSettings s = new AppSettings();
                 List<string> script = ScriptEngine.Compose(items, s);
                 check("播报稿-非空", script != null && script.Count > 0);
@@ -127,6 +180,10 @@ namespace DeepBlue
                 store.Items = items;
                 store.NextId = 100;
                 store.Settings.WindowDays = 14;
+                store.Settings.WeatherOn = true;
+                store.Settings.WeatherCity = "北京市";
+                store.Settings.WeatherLat = 39.9075;
+                store.Settings.WeatherLon = 116.3972;
                 store.Save();
                 if (Store.LastSaveError != null) log.Add("[INFO] Save error: " + Store.LastSaveError);
 
@@ -134,6 +191,10 @@ namespace DeepBlue
                 check("存储-条目数往返一致", loaded.Items.Count == items.Count);
                 check("存储-提醒窗口往返一致", loaded.Settings.WindowDays == 14);
                 check("存储-NextId往返一致", loaded.NextId == 100);
+                check("存储-天气设置往返一致",
+                    loaded.Settings.WeatherOn && loaded.Settings.WeatherCity == "北京市" &&
+                    Math.Abs(loaded.Settings.WeatherLat - 39.9075) < 0.0001 &&
+                    Math.Abs(loaded.Settings.WeatherLon - 116.3972) < 0.0001);
                 check("存储-临时字段未序列化",
                     !File.ReadAllText(Path.Combine(Store.DataDir, "data.json")).Contains("ConfirmUntil"));
             }

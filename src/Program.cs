@@ -16,6 +16,11 @@ namespace DeepBlue
                     SelfTest.Run();
                     return;
                 }
+                if (a == "--weathertest")
+                {
+                    WeatherTest.Run();
+                    return;
+                }
             }
 
             bool createdNew;
