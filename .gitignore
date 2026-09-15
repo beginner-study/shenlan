@@ -12,3 +12,7 @@ build/
 # 系统文件
 Thumbs.db
 desktop.ini
+
+# 开发诊断工具与渲染输出
+diag/
+cover-render.png

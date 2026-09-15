@@ -1,5 +1,6 @@
 using System;
 using System.Drawing;
+using System.Drawing.Text;
 using System.Windows.Forms;
 
 namespace DeepBlue
@@ -19,7 +20,24 @@ namespace DeepBlue
         public static readonly Color Ok = Color.FromArgb(22, 163, 74);
         public static readonly Color OkSoft = Color.FromArgb(219, 242, 229);
 
+        // 方案一 · 森林绿金基调（与封面插画同源）
+        public static readonly Color ForestMist = Color.FromArgb(237, 242, 231);   // 晨雾绿（窗口画布）
+        public static readonly Color ForestShell = Color.FromArgb(11, 54, 36);      // 深林绿（书壳）
+        public static readonly Color ForestShellHi = Color.FromArgb(14, 74, 51);    // 书壳亮边
+        public static readonly Color Paper = Color.FromArgb(251, 248, 241);         // 米白纸页
+        public static readonly Color PaperEdge = Color.FromArgb(230, 222, 203);    // 纸页描边
+        public static readonly Color InkGreen = Color.FromArgb(31, 61, 44);         // 页眉深绿
+        public static readonly Color InkGreenBody = Color.FromArgb(55, 66, 59);    // 正文墨绿
+        public static readonly Color MutedGreen = Color.FromArgb(122, 139, 125);   // 辅助灰绿
+        public static readonly Color Gold = Color.FromArgb(201, 154, 63);          // 晨光金
+        public static readonly Color GoldHi = Color.FromArgb(227, 185, 95);         // 金亮
+        public static readonly Color GoldDeep = Color.FromArgb(160, 120, 38);      // 金深
+        public static readonly Color GoldSoft = Color.FromArgb(248, 237, 203);     // 当前句暖金底
+        public static readonly Color GoldInk = Color.FromArgb(74, 61, 30);          // 高亮句墨色
+
         public static readonly string FontFamily = "Microsoft YaHei UI";
+
+        private static FontFamily _sealFamily;
 
         public static Font F(float size)
         {
@@ -29,6 +47,52 @@ namespace DeepBlue
         public static Font F(float size, FontStyle style)
         {
             return new Font(FontFamily, size, style, GraphicsUnit.Point);
+        }
+
+        // 私有大篆字体（OFL 开源，随软件分发，无需用户安装）
+        public static FontFamily SealFamily()
+        {
+            if (_sealFamily != null) return _sealFamily;
+            try
+            {
+                string path = AssetPath("JFZSKSealScript-V2.5.ttf");
+                if (path != null)
+                {
+                    PrivateFontCollection pfc = new PrivateFontCollection();
+                    pfc.AddFontFile(path);
+                    _sealFamily = pfc.Families[0];
+                }
+            }
+            catch (Exception) { }
+            if (_sealFamily == null) _sealFamily = System.Drawing.FontFamily.GenericSerif;
+            return _sealFamily;
+        }
+
+        public static Font Seal(float sizePx)
+        {
+            return new Font(SealFamily(), sizePx, FontStyle.Regular, GraphicsUnit.Pixel);
+        }
+
+        // 页眉题字：楷体
+        public static Font Kai(float sizePx, bool bold)
+        {
+            return new Font("KaiTi", sizePx, bold ? FontStyle.Bold : FontStyle.Regular, GraphicsUnit.Pixel);
+        }
+
+        public static Font Mono(float sizePx)
+        {
+            return new Font("Consolas", sizePx, FontStyle.Regular, GraphicsUnit.Pixel);
+        }
+
+        // 资源搜索：安装目录 / assets 子目录
+        public static string AssetPath(string name)
+        {
+            string baseDir = AppDomain.CurrentDomain.BaseDirectory;
+            string p1 = System.IO.Path.Combine(baseDir, name);
+            if (System.IO.File.Exists(p1)) return p1;
+            string p2 = System.IO.Path.Combine(baseDir, "assets", name);
+            if (System.IO.File.Exists(p2)) return p2;
+            return null;
         }
 
         public static Color PriorityColor(string p)

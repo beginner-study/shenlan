@@ -4,6 +4,7 @@
 
 ## 功能特性
 
+- **书籍形态界面**：主界面以一本「晨光穿林」的书籍呈现——启动时是合上的封面（大篆「深蓝」金字），点击「翻开新的一页」后以 3D 翻页动画展开为对开双页：左页是今日信息，右页是播报文稿，正在播报的句子以暖金高亮
 - **启动即就绪**：打开软件后 2 秒内自动完成日期与日程数据加载，无需手动刷新
 - **语音播报**：逐句高亮显示当前播报进度，支持暂停 / 继续 / 停止；默认使用 Windows 系统语音，安装[语音增强包](#语音增强包可选)后可使用接近真人的「晓晓」自然语音
 - **天气播报（可选）**：开启后自动播报今日天气、最高最低气温、降水概率，支持全球城市搜索，断网自动跳过不影响其他播报；数据源可切换 [Open-Meteo](https://open-meteo.com/)（默认）或[和风天气](https://www.qweather.com/)
@@ -72,17 +73,17 @@
 
 ## 使用方法
 
-1. 启动软件，日期卡片与数据就绪状态会自动加载
-2. 点击「管理日程」录入你的安排：
+1. 启动软件，日期与日程数据自动加载（左下角显示就绪状态）
+2. 点击封面右上角的「···」菜单录入你的安排：
    - **日程**：带具体日期（或重复规则）与时间的事项，如「周三 9:30 团队周会」
    - **截止**：带截止日期的事项，如「9 月 10 日前提交季度报告」，可设置优先级 P0–P3
    - 每条事项支持添加备注，备注内容也会被播报
-3. 回到主界面，点击「开始新的一天」，深蓝将语音播报：问候语 + 日期星期 → 今日安排 → 截止提醒 → 结束语
+3. 点击封面上的「翻开新的一页」，书籍以 3D 动画展开，深蓝将语音播报：问候语 + 日期星期 → 今日安排 → 截止提醒 → 结束语
 4. 播报过程中可随时暂停、继续或停止
 
 ## 从源码构建
 
-本项目不依赖任何第三方库或 SDK，仅使用 Windows 内置的 .NET Framework C# 编译器：
+本项目不依赖任何第三方库或 SDK，仅使用 Windows 内置的 .NET Framework C# 编译器（3D 翻页动画使用系统自带的 WPF 组件）：
 
 ```cmd
 git clone https://github.com/beginner-study/shenlan.git
@@ -98,11 +99,11 @@ build.cmd
 "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer\shenlan.iss
 ```
 
-安装包输出至 `build\DeepBlue-Setup-x.x.x.exe`（约 2 MB）。
+安装包输出至 `build\DeepBlue-Setup-x.x.x.exe`（约 4 MB）。
 
 ## 运行自测
 
-源码内置 63 项逻辑自测（覆盖问候语、时间口语化、重复规则、优先级过滤、播报稿生成、默认语音选择、双数据源天气代码与描述、缓存匹配、存储往返等），构建脚本完成后会自动运行：
+源码内置 65 项逻辑自测（覆盖问候语、时间口语化、重复规则、优先级过滤、播报稿生成、默认语音选择、双数据源天气代码与描述、缓存匹配、存储往返等），构建脚本完成后会自动运行：
 
 ```cmd
 build.cmd
@@ -113,19 +114,29 @@ type build\selftest.txt
 
 ```
 shenlan/
-├── src/                  # C# 源码（WinForms，.NET Framework 4.8）
+├── src/                  # C# 源码（WinForms + WPF 3D，.NET Framework 4.8）
 │   ├── Program.cs        # 入口：单实例检测
-│   ├── MainForm.cs       # 主界面：启动自动取数、天气后台拉取、播报控制
+│   ├── MainForm.cs       # 主窗体：封面态 → 3D 翻页 → 展开态三段式状态机
+│   ├── CoverPanel.cs     # 封面态：合上的书（内嵌 ··· / × / 翻开新的一页）
+│   ├── PageFlip.cs       # 3D 翻页动画：WPF Viewport3D，封面绕书脊翻起
+│   ├── BookPanel.cs      # 展开态：对开双页（左页今日信息 + 右页播报文稿）
+│   ├── LeftPage.cs       # 左页：日期、天气、今日安排、截止提醒
+│   ├── GlassMenu.cs      # 毛玻璃下拉菜单
+│   ├── Assets.cs         # 封面合成：插画 + 大篆金字 + 水印处理
 │   ├── ScheduleForm.cs   # 日程管理：增删改查、重复规则、优先级
 │   ├── SettingsForm.cs   # 设置：语音、语速、提醒窗口、段落开关、天气城市
 │   ├── ScriptEngine.cs   # 播报稿引擎：日期/天气/今日/截止四段式脚本生成
 │   ├── BroadcastEngine.cs# TTS 播报引擎：逐句播报、暂停/继续/停止、默认语音选择
-│   ├── WeatherEngine.cs  # 天气引擎：Open-Meteo 拉取、每日缓存、WMO 代码中文映射
+│   ├── WeatherEngine.cs  # 天气引擎：Open-Meteo / 和风双源、每日缓存
 │   ├── WeatherTest.cs    # 天气网络诊断（--weathertest）
 │   ├── Models.cs         # 数据模型与 JSON 本地存储
 │   ├── SelfTest.cs       # 内置自测框架
-│   └── Ui.cs             # UI 样式辅助
-├── assets/app.ico        # 应用图标
+│   └── Ui.cs             # UI 样式辅助：森林绿金色板、大篆字体加载
+├── assets/
+│   ├── app.ico                        # 应用图标
+│   ├── cover-forest.jpg               # 封面插画（晨光穿林）
+│   ├── JFZSKSealScript-V2.5.ttf       # 大篆字体（随软件分发，无需安装）
+│   └── JFZSKSealScript-OFL-LICENSE.txt
 ├── installer/
 │   ├── shenlan.iss       # 主程序安装脚本
 │   ├── voice.iss         # 语音增强包安装脚本
@@ -138,9 +149,12 @@ shenlan/
 
 - ~~更自然的语音~~：V1.1 已提供可选语音增强包（晓晓自然语音，本地离线）
 - ~~天气数据模块~~：V1.2 已上线（Open-Meteo 免费源，可选开启，默认关闭）
+- ~~界面美化~~：V1.4 全新书籍形态界面（封面 → 3D 翻页 → 对开双页）
 - 开机自启动选项
 - 更多播报场景（如晚安回顾）
 
 ## 许可证
 
 [MIT License](./LICENSE)
+
+封面大篆字体「敬峰中山王篆」（JFZSKSealScript）以 [SIL OFL 1.1](./assets/JFZSKSealScript-OFL-LICENSE.txt) 协议随软件分发，版权归[刘敬峰](https://github.com/jeffi369/JFZSKSealScript)所有。

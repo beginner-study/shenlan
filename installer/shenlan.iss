@@ -6,7 +6,7 @@
 
 #define MyAppName "深蓝 DeepBlue"
 #define MyAppNameEn "DeepBlue"
-#define MyAppVersion "1.3.0"
+#define MyAppVersion "1.4.0"
 #define MyAppPublisher "DeepBlue Project"
 #define MyAppExeName "DeepBlue.exe"
 
@@ -41,6 +41,9 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 [Files]
 Source: "..\build\DeepBlue.exe"; DestDir: "{app}"; Flags: ignoreversion
 Source: "..\build\app.ico"; DestDir: "{app}"; Flags: ignoreversion
+Source: "..\assets\cover-forest.jpg"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "..\assets\JFZSKSealScript-V2.5.ttf"; DestDir: "{app}\assets"; Flags: ignoreversion
+Source: "..\assets\JFZSKSealScript-OFL-LICENSE.txt"; DestDir: "{app}\assets"; Flags: ignoreversion
 Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
@@ -51,5 +54,6 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent
 
 [UninstallDelete]
-; 卸载时清理应用目录中的临时文件（用户数据在 %APPDATA%\DeepBlue，不会自动删除）
+; 卸载时清理应用目录中的临时文件与静态资源（用户数据在 %APPDATA%\DeepBlue，不会自动删除）
 Type: files; Name: "{app}\selftest.txt"
+Type: filesandordirs; Name: "{app}\assets"

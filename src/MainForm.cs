@@ -5,49 +5,70 @@ using System.Windows.Forms;
 
 namespace DeepBlue
 {
+    // 方案一 · 书籍形态主窗体
+    // 封面态（合上的书）→ 3D 翻页 → 展开态（对页：今日 + 晨间播报）
     public class MainForm : Form
     {
-        private enum BState { Loading, Ready, Playing, Paused, Finished }
+        private enum BState { Loading, Ready, Opening, Playing, Paused, Finished }
 
         private Store _store;
         private BroadcastEngine _engine = new BroadcastEngine();
         private DateTime _dataDay;
         private BState _state = BState.Loading;
         private bool _voiceWarned;
-        private bool _pendingStart;
         private WeatherData _weather;
 
-        private Panel _cardDate;
-        private Label _lblDate;
-        private Label _lblDateSub;
-        private RichTextBox _rtb;
+        private readonly CoverPanel _cover;
+        private readonly PageFlip _flip;
+        private readonly BookPanel _book;
+
         private List<int> _sentStart = new List<int>();
         private List<int> _sentLen = new List<int>();
         private int _curSent = -1;
 
-        private Button _btnStart;
-        private Panel _pnlControls;
-        private Button _btnPause;
-        private Button _btnStop;
-        private Button _btnSched;
-        private Button _btnSettings;
-        private Label _lblStatus;
-        private Label _lblReadyAt;
-
         private ScheduleForm _schedForm;
         private System.Windows.Forms.Timer _loadTimer;
+
+        private const int CoverW = 452, CoverH = 602;
+        private const int BookW = 960, BookH = 684;
 
         public MainForm()
         {
             Text = AppInfo.Name;
             StartPosition = FormStartPosition.CenterScreen;
-            Size = new Size(960, 660);
-            MinimumSize = new Size(860, 560);
+            FormBorderStyle = FormBorderStyle.None;
+            MaximizeBox = false;
+            MinimizeBox = false;
+            ShowInTaskbar = true;
+            Size = new Size(CoverW, CoverH);
             Font = Ui.F(9F);
-            BackColor = Ui.Bg;
+            BackColor = Ui.ForestMist;
             Icon = LoadIcon();
 
-            BuildUi();
+            _cover = new CoverPanel();
+            _cover.Bounds = new Rectangle(0, 0, CoverW, CoverH);
+            _cover.OpenClick += delegate { OnOpenClick(); };
+            _cover.DotsClick += delegate { ShowMenu(_cover, new Point(442, 58)); };
+            _cover.CloseClick += delegate { Close(); };
+            Controls.Add(_cover);
+
+            _flip = new PageFlip();
+            _flip.Visible = false;
+            Controls.Add(_flip);
+
+            _book = new BookPanel();
+            _book.Visible = false;
+            _book.DotsClick += delegate { ShowMenu(_book, new Point(894, 30)); };
+            _book.CloseClick += delegate { Close(); };
+            _book.BtnPause.Click += delegate { OnPauseClick(); };
+            _book.BtnStop.Click += delegate { OnStopClick(); };
+            _book.BtnReplay.Click += delegate { BeginBroadcast(); };
+            _book.MouseDown += delegate (object s, MouseEventArgs e)
+            {
+                if (e.Button == MouseButtons.Left)
+                    DragMove();
+            };
+            Controls.Add(_book);
 
             _engine.SentenceStarted += delegate (int i)
             {
@@ -64,6 +85,20 @@ namespace DeepBlue
             _loadTimer.Start();
         }
 
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern bool ReleaseCapture();
+        [System.Runtime.InteropServices.DllImport("user32.dll")]
+        private static extern IntPtr SendMessage(
+            IntPtr hWnd, int msg, IntPtr wParam, IntPtr lParam);
+        private const int WM_NCLBUTTONDOWN = 0xA1;
+        private const int HTCAPTION = 2;
+
+        private void DragMove()
+        {
+            ReleaseCapture();
+            SendMessage(Handle, WM_NCLBUTTONDOWN, (IntPtr)HTCAPTION, IntPtr.Zero);
+        }
+
         internal static Icon LoadIcon()
         {
             try
@@ -76,163 +111,18 @@ namespace DeepBlue
             return null;
         }
 
-        private void BuildUi()
-        {
-            Panel pnlTop = new Panel();
-            pnlTop.Dock = DockStyle.Top;
-            pnlTop.Height = 140;
-            pnlTop.BackColor = Ui.Bg;
-            Controls.Add(pnlTop);
-
-            _btnSched = Ui.GhostButton("日程管理", 92, 34);
-            _btnSched.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _btnSched.Click += delegate { OpenSchedule(); };
-            pnlTop.Controls.Add(_btnSched);
-
-            _btnSettings = Ui.GhostButton("设置", 72, 34);
-            _btnSettings.Anchor = AnchorStyles.Top | AnchorStyles.Right;
-            _btnSettings.Click += delegate { OpenSettings(); };
-            pnlTop.Controls.Add(_btnSettings);
-
-            _cardDate = new Panel();
-            _cardDate.BackColor = Ui.Card;
-            _cardDate.Paint += delegate (object s, PaintEventArgs e)
-            { Ui.PaintCardBorder(s, e, _state == BState.Loading); };
-            pnlTop.Controls.Add(_cardDate);
-
-            _lblDate = new Label();
-            _lblDate.Text = "——";
-            _lblDate.Font = Ui.F(19F, FontStyle.Bold);
-            _lblDate.ForeColor = Ui.Ink;
-            _lblDate.AutoSize = false;
-            _lblDate.Height = 40;
-            _lblDate.Location = new Point(20, 12);
-            _lblDate.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
-            _lblDate.Click += delegate { _cardDate.Focus(); };
-            _cardDate.Controls.Add(_lblDate);
-
-            _lblDateSub = new Label();
-            _lblDateSub.Text = "正在读取系统日期与本地日程…";
-            _lblDateSub.Font = Ui.F(9.5F);
-            _lblDateSub.ForeColor = Ui.Muted;
-            _lblDateSub.AutoSize = false;
-            _lblDateSub.Height = 24;
-            _lblDateSub.Location = new Point(20, 54);
-            _lblDateSub.Anchor = AnchorStyles.Left | AnchorStyles.Top | AnchorStyles.Right;
-            _cardDate.Controls.Add(_lblDateSub);
-
-            Panel pnlMid = new Panel();
-            pnlMid.Dock = DockStyle.Fill;
-            pnlMid.BackColor = Ui.Bg;
-            pnlMid.Padding = new Padding(24, 4, 24, 12);
-            Controls.Add(pnlMid);
-            pnlMid.BringToFront();
-
-            Panel cardScript = new Panel();
-            cardScript.Dock = DockStyle.Fill;
-            cardScript.BackColor = Ui.Card;
-            cardScript.Padding = new Padding(20, 16, 20, 16);
-            cardScript.Paint += delegate (object s, PaintEventArgs e) { Ui.PaintCardBorder(s, e, false); };
-            pnlMid.Controls.Add(cardScript);
-
-            _rtb = new RichTextBox();
-            _rtb.Dock = DockStyle.Fill;
-            _rtb.BorderStyle = BorderStyle.None;
-            _rtb.BackColor = Ui.Card;
-            _rtb.Font = Ui.F(11.5F);
-            _rtb.ForeColor = Ui.Ink;
-            _rtb.ReadOnly = true;
-            _rtb.TabStop = false;
-            _rtb.HideSelection = false;
-            _rtb.DetectUrls = false;
-            _rtb.WordWrap = true;
-            _rtb.Text = "";
-            cardScript.Controls.Add(_rtb);
-
-            Panel pnlBottom = new Panel();
-            pnlBottom.Dock = DockStyle.Bottom;
-            pnlBottom.Height = 118;
-            pnlBottom.BackColor = Ui.Bg;
-            Controls.Add(pnlBottom);
-
-            _btnStart = Ui.PrimaryButton("开始新的一天", 300, 52);
-            _btnStart.Click += delegate { OnStartClick(); };
-            pnlBottom.Controls.Add(_btnStart);
-            _btnStart.Enabled = false;
-            _btnStart.BackColor = Color.FromArgb(156, 163, 175);
-
-            _pnlControls = new Panel();
-            _pnlControls.Width = 320;
-            _pnlControls.Height = 52;
-            _pnlControls.BackColor = Ui.Bg;
-            _pnlControls.Visible = false;
-            pnlBottom.Controls.Add(_pnlControls);
-
-            _btnPause = Ui.GhostButton("暂停", 150, 52);
-            _btnPause.Location = new Point(0, 0);
-            _btnPause.Click += delegate { OnPauseClick(); };
-            _pnlControls.Controls.Add(_btnPause);
-
-            _btnStop = Ui.DangerGhostButton("停止", 150, 52);
-            _btnStop.Location = new Point(170, 0);
-            _btnStop.Click += delegate { OnStopClick(); };
-            _pnlControls.Controls.Add(_btnStop);
-
-            _lblStatus = new Label();
-            _lblStatus.Text = AppInfo.NameEn + " V" + AppInfo.Version;
-            _lblStatus.Font = Ui.F(8.5F);
-            _lblStatus.ForeColor = Ui.Muted;
-            _lblStatus.AutoSize = true;
-            _lblStatus.Location = new Point(24, 94);
-            _lblStatus.Anchor = AnchorStyles.Left | AnchorStyles.Bottom;
-            pnlBottom.Controls.Add(_lblStatus);
-
-            _lblReadyAt = new Label();
-            _lblReadyAt.Text = "";
-            _lblReadyAt.Font = Ui.F(8.5F);
-            _lblReadyAt.ForeColor = Ui.Muted;
-            _lblReadyAt.AutoSize = true;
-            _lblReadyAt.Anchor = AnchorStyles.Right | AnchorStyles.Bottom;
-            pnlBottom.Controls.Add(_lblReadyAt);
-
-            Resize += delegate { LayoutControls(); };
-            LayoutControls();
-        }
-
-        private void LayoutControls()
-        {
-            int w = ClientSize.Width;
-            _btnSched.Location = new Point(w - _btnSched.Width - 24, 20);
-            _btnSettings.Location = new Point(w - _btnSettings.Width - 24 - _btnSched.Width - 8, 20);
-            _cardDate.Location = new Point(24, 18);
-            _cardDate.Width = w - 48;
-            _cardDate.Height = 90;
-            _lblDate.Width = _cardDate.Width - 40;
-            _lblDateSub.Width = _cardDate.Width - 40;
-            _lblReadyAt.Location = new Point(
-                w - _lblReadyAt.Width - 24,
-                _lblReadyAt.Parent.Height - 24);
-        }
+        // ============ 数据 ============
 
         private void OnDataLoaded()
         {
             _store = Store.Load();
             _dataDay = DateTime.Today;
             _state = BState.Ready;
-            _btnStart.Enabled = true;
-            _btnStart.BackColor = Ui.Accent;
-            RefreshDateCard();
-            _rtb.Text = "";
-            _sentStart.Clear();
-            _sentLen.Clear();
-            _curSent = -1;
-            _lblReadyAt.Text = "数据就绪 · " + DateTime.Now.ToString("HH:mm");
+            _cover.OpenEnabled = true;
+            _book.PageLeft.SetWeatherFlag(_store.Settings.WeatherOn &&
+                _store.Settings.WeatherCity.Length > 0);
+            RefreshLeftPage("数据就绪 · " + DateTime.Now.ToString("HH:mm"));
             StartWeather();
-            if (_pendingStart)
-            {
-                _pendingStart = false;
-                BeginBroadcast();
-            }
         }
 
         private void StartWeather()
@@ -275,46 +165,29 @@ namespace DeepBlue
 
         private void UpdateWeatherUi(WeatherData d, bool fetching)
         {
-            if (d != null)
-            {
-                _lblDateSub.Text = "数据就绪 · " + WeatherEngine.CardLine(d);
-            }
-            else if (fetching)
-            {
-                _lblDateSub.Text = "数据就绪 · 天气获取中…";
-            }
+            string note;
+            if (d != null) note = "数据就绪 · " + WeatherEngine.CardLine(d);
+            else if (fetching) note = "数据就绪 · 天气获取中…";
             else if (_store != null && _store.Settings.WeatherOn &&
                      !string.IsNullOrEmpty(_store.Settings.WeatherCity))
-            {
-                _lblDateSub.Text = "数据就绪 · 天气暂不可用（播报将跳过天气段）";
-            }
+                note = "数据就绪 · 天气暂不可用";
             else
-            {
-                _lblDateSub.Text = "数据就绪 · 点击按钮开始播报";
-            }
+                note = "数据就绪";
+            RefreshLeftPage(note);
         }
 
-        private void RefreshDateCard()
+        private void RefreshLeftPage(string note)
         {
-            DateTime today = DateTime.Today;
-            _lblDate.Text = ScriptEngine.CnDate(today) + " " + ScriptEngine.WeekName(today);
-            _cardDate.Invalidate();
+            _book.PageLeft.SetData(_store, _weather, note);
         }
 
-        private void OnStartClick()
-        {
-            if (_state == BState.Playing || _state == BState.Paused) return;
-            if (_state == BState.Loading)
-            {
-                _pendingStart = true;
-                return;
-            }
-            BeginBroadcast();
-        }
+        // ============ 开启新的一天 ============
 
-        private void BeginBroadcast()
+        private void OnOpenClick()
         {
+            if (_state != BState.Ready) return;
             if (_store == null) return;
+
             AppSettings s = _store.Settings;
             bool qwReady = s.WeatherSource != "qweather" ||
                 (s.QwHost.Length > 0 && s.QwKey.Length > 0 && s.QwLocation.Length > 0);
@@ -325,13 +198,6 @@ namespace DeepBlue
                     AppInfo.Name, MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
-
-            if (_dataDay != DateTime.Today)
-            {
-                OnDataLoaded();
-                _lblReadyAt.Text = "检测到日期已变化，已自动重新取数 · " + DateTime.Now.ToString("HH:mm");
-            }
-
             if (!_voiceWarned && !BroadcastEngine.HasChineseVoice())
             {
                 _voiceWarned = true;
@@ -341,43 +207,87 @@ namespace DeepBlue
                     AppInfo.Name, MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
 
-            List<string> sents = ScriptEngine.Compose(_store.Items, s, _weather);
+            _state = BState.Opening;
+
+            // 展开窗口：书脊（封面左缘 = 窗口左缘）保持屏幕位置不变
+            int newX = Location.X - BookW / 2;
+            int newY = Location.Y - (BookH - CoverH) / 2;
+            Rectangle wa = Screen.FromControl(this).WorkingArea;
+            if (newX < wa.Left) newX = wa.Left;
+            if (newY < wa.Top) newY = wa.Top;
+            if (newX + BookW > wa.Right) newX = wa.Right - BookW;
+            if (newY + BookH > wa.Bottom) newY = wa.Bottom - BookH;
+            SetBounds(newX, newY, BookW, BookH);
+
+            _cover.Visible = false;
+            _book.Visible = false;
+            _flip.Visible = true;
+            _flip.BringToFront();
+            _flip.Play(1050, delegate { OnFlipDone(); });
+        }
+
+        private void OnFlipDone()
+        {
+            _flip.Visible = false;
+            _book.Visible = true;
+            _book.BringToFront();
+            _state = BState.Ready;
+            BeginBroadcast();
+        }
+
+        // ============ 播报 ============
+
+        private void BeginBroadcast()
+        {
+            if (_state == BState.Opening) return;
+            if (_store == null) return;
+
+            if (_dataDay != DateTime.Today)
+            {
+                OnDataLoaded();
+            }
+
+            List<string> sents = ScriptEngine.Compose(_store.Items, _store.Settings, _weather);
             RenderScript(sents);
-            _engine.Play(sents, s.VoiceName, s.Rate);
+            _engine.Play(sents, _store.Settings.VoiceName, _store.Settings.Rate);
             SetState(BState.Playing);
         }
 
         private void RenderScript(List<string> sents)
         {
-            _rtb.Text = "";
+            _book.Rtb.Text = "";
             _sentStart.Clear();
             _sentLen.Clear();
             _curSent = -1;
             foreach (string sent in sents)
             {
-                int start = _rtb.TextLength;
-                _rtb.AppendText(sent);
-                _rtb.AppendText("\n\n");
+                int start = _book.Rtb.TextLength;
+                _book.Rtb.AppendText(sent);
+                _book.Rtb.AppendText("\n\n");
                 _sentStart.Add(start);
                 _sentLen.Add(sent.Length);
             }
+            _book.SetProgress(-1, sents.Count);
         }
 
         private void OnSentenceStarted(int i)
         {
-            if ((_state != BState.Playing && _state != BState.Paused) || i < 0 || i >= _sentStart.Count) return;
+            if ((_state != BState.Playing && _state != BState.Paused) ||
+                i < 0 || i >= _sentStart.Count) return;
             if (_curSent >= 0 && _curSent < _sentStart.Count)
             {
-                _rtb.Select(_sentStart[_curSent], _sentLen[_curSent]);
-                _rtb.SelectionBackColor = Ui.Card;
-                _rtb.SelectionColor = Ui.Ink;
+                _book.Rtb.Select(_sentStart[_curSent], _sentLen[_curSent]);
+                _book.Rtb.SelectionBackColor = Ui.Paper;
+                _book.Rtb.SelectionColor = Ui.InkGreenBody;
             }
             _curSent = i;
-            _rtb.Select(_sentStart[i], _sentLen[i]);
-            _rtb.SelectionBackColor = Ui.AccentSoft;
-            _rtb.SelectionColor = Ui.Ink;
-            _rtb.Select(_sentStart[i], 1);
-            _rtb.ScrollToCaret();
+            _book.Rtb.Select(_sentStart[i], _sentLen[i]);
+            _book.Rtb.SelectionBackColor = Ui.GoldSoft;
+            _book.Rtb.SelectionColor = Ui.GoldInk;
+            _book.Rtb.Select(_sentStart[i], 1);
+            _book.Rtb.ScrollToCaret();
+            _book.SetProgress(i, _sentLen.Count);
+            _book.LblStatus.Text = "正在播报 · " + (i + 1) + " / " + _sentLen.Count;
         }
 
         private void OnEngineFinished()
@@ -402,36 +312,53 @@ namespace DeepBlue
         private void OnStopClick()
         {
             _engine.Stop();
-            SetState(BState.Ready);
-            _btnStart.Text = "重新播报";
-            _lblStatus.Text = "已停止";
+            SetState(BState.Finished);
+            _book.LblStatus.Text = "已停止";
         }
 
         private void SetState(BState st)
         {
             _state = st;
-            bool showMain = (st == BState.Loading || st == BState.Ready || st == BState.Finished);
-            _btnStart.Visible = showMain;
-            _pnlControls.Visible = !showMain;
+            bool playing = st == BState.Playing || st == BState.Paused;
+            _book.BtnPause.Visible = playing;
+            _book.BtnStop.Visible = playing;
+            _book.SetVisibleForPlaying(playing);
+            _book.BtnReplay.Visible = (st == BState.Finished);
             if (st == BState.Finished)
             {
-                _btnStart.Text = "重新播报";
-                _lblStatus.Text = "播报完成 · " + DateTime.Now.ToString("HH:mm");
+                _book.LblStatus.Text = "播报完成 · " + DateTime.Now.ToString("HH:mm");
             }
             else if (st == BState.Playing)
             {
-                _btnPause.Text = "暂停";
-                _lblStatus.Text = "播报中…";
+                _book.BtnPause.Text = "暂 停";
             }
             else if (st == BState.Paused)
             {
-                _btnPause.Text = "继续";
-                _lblStatus.Text = "已暂停";
+                _book.BtnPause.Text = "继 续";
             }
-            else if (st == BState.Ready)
+        }
+
+        // ============ 菜单 ============
+
+        private void ShowMenu(Control host, Point btnBottomRightLocal)
+        {
+            if (_store == null) return;
+            using (GlassMenu menu = new GlassMenu(
+                new string[] { "日程管理", "设置" }, Ui.InkGreen))
             {
-                _btnStart.Text = _rtb.TextLength > 0 ? "重新播报" : "开始新的一天";
-                _lblStatus.Text = AppInfo.NameEn + " V" + AppInfo.Version;
+                menu.ItemChosen += delegate (int idx)
+                {
+                    if (idx == 0) OpenSchedule();
+                    else OpenSettings();
+                };
+                Point p = host.PointToScreen(btnBottomRightLocal);
+                Screen sc = Screen.FromPoint(p);
+                Point loc = new Point(p.X - menu.Width, p.Y + 10);
+                if (loc.X < sc.WorkingArea.Left) loc.X = sc.WorkingArea.Left;
+                if (loc.Y + menu.Height > sc.WorkingArea.Bottom)
+                    loc.Y = p.Y - menu.Height - 50;
+                menu.Location = loc;
+                menu.Show(this);
             }
         }
 
@@ -454,6 +381,9 @@ namespace DeepBlue
                 f.ShowDialog(this);
             }
             StartWeather();
+            _book.PageLeft.SetWeatherFlag(_store.Settings.WeatherOn &&
+                _store.Settings.WeatherCity.Length > 0);
+            RefreshLeftPage("数据就绪 · " + DateTime.Now.ToString("HH:mm"));
         }
 
         protected override void OnFormClosing(FormClosingEventArgs e)
@@ -464,6 +394,19 @@ namespace DeepBlue
                 try { _schedForm.Close(); } catch (Exception) { }
             }
             base.OnFormClosing(e);
+        }
+
+        protected override bool ProcessCmdKey(ref Message msg, Keys keyData)
+        {
+            if (keyData == Keys.Escape)
+            {
+                if (_state == BState.Playing || _state == BState.Paused)
+                {
+                    OnStopClick();
+                    return true;
+                }
+            }
+            return base.ProcessCmdKey(ref msg, keyData);
         }
     }
 }
