@@ -6,7 +6,7 @@
 
 #define MyAppName "深蓝 DeepBlue"
 #define MyAppNameEn "DeepBlue"
-#define MyAppVersion "1.4.0"
+#define MyAppVersion "1.5.0"
 #define MyAppPublisher "DeepBlue Project"
 #define MyAppExeName "DeepBlue.exe"
 
@@ -49,6 +49,12 @@ Source: "..\README.md"; DestDir: "{app}"; Flags: ignoreversion
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
+
+[Registry]
+; 开机自启动状态存于 HKCU Run 键（用户在设置页开启时由程序写入）。
+; dontcreatekey：安装时不创建/不写入（默认关闭）；uninsdeletevalue：卸载时若存在则删除，
+; 避免卸载后 Run 键残留指向已删除的 exe。注意：仅清理执行卸载的用户的 HKCU。
+Root: HKCU; Subkey: "Software\Microsoft\Windows\CurrentVersion\Run"; ValueType: none; ValueName: "DeepBlue"; Flags: dontcreatekey uninsdeletevalue
 
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "启动 {#MyAppName}"; Flags: nowait postinstall skipifsilent

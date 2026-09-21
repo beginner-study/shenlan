@@ -19,7 +19,6 @@ namespace DeepBlue
         private WeatherData _weather;
 
         private readonly CoverPanel _cover;
-        private readonly PageFlip _flip;
         private readonly BookPanel _book;
 
         private List<int> _sentStart = new List<int>();
@@ -27,10 +26,12 @@ namespace DeepBlue
         private int _curSent = -1;
 
         private ScheduleForm _schedForm;
+        private GlassMenu _menu;
         private System.Windows.Forms.Timer _loadTimer;
 
-        private const int CoverW = 452, CoverH = 602;
-        private const int BookW = 960, BookH = 684;
+        // 窗口物理像素常量（1.5 倍放大）：封面 678x903、展开 1440x1026
+        private const int CoverW = 678, CoverH = 903;
+        private const int BookW = 1440, BookH = 1026;
 
         public MainForm()
         {
@@ -41,28 +42,23 @@ namespace DeepBlue
             MinimizeBox = false;
             ShowInTaskbar = true;
             Size = new Size(CoverW, CoverH);
-            Font = Ui.F(9F);
-            BackColor = Ui.ForestMist;
+            Font = Ui.F(9F * Ui.Scale);
+            BackColor = Ui.ForestShell;
             Icon = LoadIcon();
 
             _cover = new CoverPanel();
             _cover.Bounds = new Rectangle(0, 0, CoverW, CoverH);
             _cover.OpenClick += delegate { OnOpenClick(); };
-            _cover.DotsClick += delegate { ShowMenu(_cover, new Point(442, 58)); };
+            _cover.DotsClick += delegate { ShowMenu(_cover, new Point(Ui.X(396), Ui.X(58))); };
             _cover.CloseClick += delegate { Close(); };
             Controls.Add(_cover);
 
-            _flip = new PageFlip();
-            _flip.Visible = false;
-            Controls.Add(_flip);
-
             _book = new BookPanel();
             _book.Visible = false;
-            _book.DotsClick += delegate { ShowMenu(_book, new Point(894, 30)); };
+            _book.DotsClick += delegate { ShowMenu(_book, new Point(Ui.X(890), Ui.X(47))); };
             _book.CloseClick += delegate { Close(); };
             _book.BtnPause.Click += delegate { OnPauseClick(); };
             _book.BtnStop.Click += delegate { OnStopClick(); };
-            _book.BtnReplay.Click += delegate { BeginBroadcast(); };
             _book.MouseDown += delegate (object s, MouseEventArgs e)
             {
                 if (e.Button == MouseButtons.Left)
@@ -111,12 +107,23 @@ namespace DeepBlue
             return null;
         }
 
+        // 与 ScriptEngine.Greeting 时段一致
+        private static string HeadTitleFor(int hour)
+        {
+            if (hour >= 5 && hour < 11) return "晨间播报";
+            if (hour >= 11 && hour < 13) return "午间播报";
+            if (hour >= 13 && hour < 18) return "下午播报";
+            return "晚间播报";
+        }
+
         // ============ 数据 ============
 
         private void OnDataLoaded()
         {
             _store = Store.Load();
             _dataDay = DateTime.Today;
+            // 右页标题与问候语同一套时段，避免「晨间播报 / 下午好」自相矛盾
+            _book.SetHeadTitle(HeadTitleFor(DateTime.Now.Hour));
             _state = BState.Ready;
             _cover.OpenEnabled = true;
             _book.PageLeft.SetWeatherFlag(_store.Settings.WeatherOn &&
@@ -165,9 +172,10 @@ namespace DeepBlue
 
         private void UpdateWeatherUi(WeatherData d, bool fetching)
         {
+            // 底注只报状态，不重复天气正文（天气卡片已在上方展示）
             string note;
-            if (d != null) note = "数据就绪 · " + WeatherEngine.CardLine(d);
-            else if (fetching) note = "数据就绪 · 天气获取中…";
+            if (fetching) note = "数据就绪 · 天气获取中…";
+            else if (d != null) note = "数据就绪 · 天气已更新";
             else if (_store != null && _store.Settings.WeatherOn &&
                      !string.IsNullOrEmpty(_store.Settings.WeatherCity))
                 note = "数据就绪 · 天气暂不可用";
@@ -209,10 +217,10 @@ namespace DeepBlue
 
             _state = BState.Opening;
 
-            // 展开窗口：书脊（封面左缘 = 窗口左缘）保持屏幕位置不变
-            int newX = Location.X - BookW / 2;
-            int newY = Location.Y - (BookH - CoverH) / 2;
+            // 展开窗口在当前屏幕工作区尽量正中（用户约定：不再保持书脊定位）
             Rectangle wa = Screen.FromControl(this).WorkingArea;
+            int newX = wa.Left + (wa.Width - BookW) / 2;
+            int newY = wa.Top + (wa.Height - BookH) / 2;
             if (newX < wa.Left) newX = wa.Left;
             if (newY < wa.Top) newY = wa.Top;
             if (newX + BookW > wa.Right) newX = wa.Right - BookW;
@@ -220,15 +228,6 @@ namespace DeepBlue
             SetBounds(newX, newY, BookW, BookH);
 
             _cover.Visible = false;
-            _book.Visible = false;
-            _flip.Visible = true;
-            _flip.BringToFront();
-            _flip.Play(1050, delegate { OnFlipDone(); });
-        }
-
-        private void OnFlipDone()
-        {
-            _flip.Visible = false;
             _book.Visible = true;
             _book.BringToFront();
             _state = BState.Ready;
@@ -284,7 +283,8 @@ namespace DeepBlue
             _book.Rtb.Select(_sentStart[i], _sentLen[i]);
             _book.Rtb.SelectionBackColor = Ui.GoldSoft;
             _book.Rtb.SelectionColor = Ui.GoldInk;
-            _book.Rtb.Select(_sentStart[i], 1);
+            // 选区收零（仅留插入点）：配合 HideSelection，杜绝系统蓝底原生选区
+            _book.Rtb.Select(_sentStart[i], 0);
             _book.Rtb.ScrollToCaret();
             _book.SetProgress(i, _sentLen.Count);
             _book.LblStatus.Text = "正在播报 · " + (i + 1) + " / " + _sentLen.Count;
@@ -323,7 +323,6 @@ namespace DeepBlue
             _book.BtnPause.Visible = playing;
             _book.BtnStop.Visible = playing;
             _book.SetVisibleForPlaying(playing);
-            _book.BtnReplay.Visible = (st == BState.Finished);
             if (st == BState.Finished)
             {
                 _book.LblStatus.Text = "播报完成 · " + DateTime.Now.ToString("HH:mm");
@@ -343,23 +342,25 @@ namespace DeepBlue
         private void ShowMenu(Control host, Point btnBottomRightLocal)
         {
             if (_store == null) return;
-            using (GlassMenu menu = new GlassMenu(
-                new string[] { "日程管理", "设置" }, Ui.InkGreen))
+            if (_menu != null && !_menu.IsDisposed)
             {
-                menu.ItemChosen += delegate (int idx)
-                {
-                    if (idx == 0) OpenSchedule();
-                    else OpenSettings();
-                };
-                Point p = host.PointToScreen(btnBottomRightLocal);
-                Screen sc = Screen.FromPoint(p);
-                Point loc = new Point(p.X - menu.Width, p.Y + 10);
-                if (loc.X < sc.WorkingArea.Left) loc.X = sc.WorkingArea.Left;
-                if (loc.Y + menu.Height > sc.WorkingArea.Bottom)
-                    loc.Y = p.Y - menu.Height - 50;
-                menu.Location = loc;
-                menu.Show(this);
+                try { _menu.Close(); } catch (Exception) { }
             }
+            // 不能用 using 包裹：Show() 返回后菜单立即被 Dispose，永远显示不出来
+            _menu = new GlassMenu(new string[] { "日程管理", "设置" }, Ui.InkGreen);
+            _menu.ItemChosen += delegate (int idx)
+            {
+                if (idx == 0) OpenSchedule();
+                else OpenSettings();
+            };
+            Point p = host.PointToScreen(btnBottomRightLocal);
+            Screen sc = Screen.FromPoint(p);
+            Point loc = new Point(p.X - _menu.Width, p.Y + 10);
+            if (loc.X < sc.WorkingArea.Left) loc.X = sc.WorkingArea.Left;
+            if (loc.Y + _menu.Height > sc.WorkingArea.Bottom)
+                loc.Y = p.Y - _menu.Height - 50;
+            _menu.Location = loc;
+            _menu.Show(this);
         }
 
         private void OpenSchedule()

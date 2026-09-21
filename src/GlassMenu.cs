@@ -14,6 +14,9 @@ namespace DeepBlue
         private readonly Color _ink;
         private int _hover = -1;
 
+        private const int TopPad = 12;   // 顶部留白（不可再大，否则显得多一栏空白）
+        private const int RowH = 46;     // 行高（字号 11px 档）
+
         public GlassMenu(string[] items, Color ink)
         {
             _items = items;
@@ -24,8 +27,8 @@ namespace DeepBlue
             StartPosition = FormStartPosition.Manual;
             TopMost = true;
             BackColor = Color.FromArgb(248, 250, 246);
-            Font = Ui.F(10F);
-            ClientSize = new Size(148, 40 + _items.Length * 42);
+            Font = Ui.F(11F);
+            ClientSize = new Size(156, TopPad + _items.Length * RowH + 8);
 
             SetStyle(ControlStyles.AllPaintingInWmPaint
                 | ControlStyles.OptimizedDoubleBuffer
@@ -74,7 +77,7 @@ namespace DeepBlue
                 sf.LineAlignment = StringAlignment.Center;
                 for (int i = 0; i < _items.Length; i++)
                 {
-                    Rectangle r = new Rectangle(8, 40 + i * 42, Width - 16, 42);
+                    Rectangle r = new Rectangle(10, TopPad + i * RowH, Width - 20, RowH);
                     if (i == _hover)
                     {
                         using (GraphicsPath hp = new GraphicsPath())
@@ -91,7 +94,7 @@ namespace DeepBlue
                     }
                     // 前缀点：日程=金、设置=绿
                     using (Brush dot = new SolidBrush(i == 0 ? Ui.Gold : Color.FromArgb(46, 110, 74)))
-                        g.FillEllipse(dot, r.X + 8, r.Y + 16, 8, 8);
+                        g.FillEllipse(dot, r.X + 8, r.Y + (RowH - 8) / 2, 8, 8);
                     using (Brush t = new SolidBrush(i == _hover ? _ink : Ui.InkGreenBody))
                         g.DrawString(_items[i], Font, t,
                             new RectangleF(r.X + 26, r.Y, r.Width - 30, r.Height), sf);
@@ -102,7 +105,7 @@ namespace DeepBlue
         private int Hit(Point pt)
         {
             for (int i = 0; i < _items.Length; i++)
-                if (new Rectangle(0, 40 + i * 42, Width, 42).Contains(pt)) return i;
+                if (new Rectangle(0, TopPad + i * RowH, Width, RowH).Contains(pt)) return i;
             return -1;
         }
 

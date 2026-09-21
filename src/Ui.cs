@@ -7,6 +7,18 @@ namespace DeepBlue
 {
     public static class Ui
     {
+        // 全局界面缩放：初始态 452x602→678x903，展开态 960x684→1440x1026（1.5 倍）
+        // 自绘 OnPaint 里用 Graphics.ScaleTransform(Scale,Scale) 按原坐标画；
+        // 子控件 Bounds / 命中区 / 字号要显式乘 Scale
+        public const float Scale = 1.5F;
+
+        public static int X(float v) { return (int)Math.Round(v * Scale); }
+
+        public static Rectangle XR(float x, float y, float w, float h)
+        {
+            return new Rectangle(X(x), X(y), X(w), X(h));
+        }
+
         public static readonly Color Bg = Color.FromArgb(244, 247, 252);
         public static readonly Color Card = Color.White;
         public static readonly Color Ink = Color.FromArgb(22, 35, 58);
@@ -21,32 +33,37 @@ namespace DeepBlue
         public static readonly Color OkSoft = Color.FromArgb(219, 242, 229);
 
         // 方案一 · 森林绿金基调（与封面插画同源）
-        public static readonly Color ForestMist = Color.FromArgb(237, 242, 231);   // 晨雾绿（窗口画布）
-        public static readonly Color ForestShell = Color.FromArgb(11, 54, 36);      // 深林绿（书壳）
-        public static readonly Color ForestShellHi = Color.FromArgb(14, 74, 51);    // 书壳亮边
-        public static readonly Color Paper = Color.FromArgb(251, 248, 241);         // 米白纸页
-        public static readonly Color PaperEdge = Color.FromArgb(230, 222, 203);    // 纸页描边
+        public static readonly Color CanvasIvory = Color.FromArgb(242, 239, 230);  // 象牙米白（封面画布）
+        public static readonly Color FrameGreen = Color.FromArgb(50, 64, 50);      // 深绿（画布边框/胶囊钮）
+        public static readonly Color FrameGreenHi = Color.FromArgb(58, 74, 58);    // 深绿亮边
+        public static readonly Color ForestMist = Color.FromArgb(237, 242, 231);   // 晨雾绿（兼容旧引用）
+        public static readonly Color ForestShell = Color.FromArgb(32, 52, 38);     // 深林绿（书壳/展开态画布/胶囊钮）
+        public static readonly Color ForestShellHi = Color.FromArgb(44, 66, 50);   // 书壳亮边
+        public static readonly Color Paper = Color.FromArgb(247, 243, 227);        // 米白纸页（暖）
+        public static readonly Color PaperEdge = Color.FromArgb(224, 217, 188);    // 纸页描边
         public static readonly Color InkGreen = Color.FromArgb(31, 61, 44);         // 页眉深绿
         public static readonly Color InkGreenBody = Color.FromArgb(55, 66, 59);    // 正文墨绿
         public static readonly Color MutedGreen = Color.FromArgb(122, 139, 125);   // 辅助灰绿
         public static readonly Color Gold = Color.FromArgb(201, 154, 63);          // 晨光金
         public static readonly Color GoldHi = Color.FromArgb(227, 185, 95);         // 金亮
         public static readonly Color GoldDeep = Color.FromArgb(160, 120, 38);      // 金深
-        public static readonly Color GoldSoft = Color.FromArgb(248, 237, 203);     // 当前句暖金底
-        public static readonly Color GoldInk = Color.FromArgb(74, 61, 30);          // 高亮句墨色
+        public static readonly Color GoldSoft = Color.FromArgb(240, 224, 160);     // 当前句暖金底
+        public static readonly Color GoldInk = Color.FromArgb(74, 90, 42);          // 高亮句墨色
 
         public static readonly string FontFamily = "Microsoft YaHei UI";
 
         private static FontFamily _sealFamily;
 
+        // 像素字号：程序声明 DPI 感知后，Point 单位会随系统缩放变大导致布局溢出，
+        // 统一按 96dpi 基准（pt*4/3=px）锁定像素，与设计稿 1:1
         public static Font F(float size)
         {
-            return new Font(FontFamily, size, FontStyle.Regular, GraphicsUnit.Point);
+            return new Font(FontFamily, size * 4f / 3f, FontStyle.Regular, GraphicsUnit.Pixel);
         }
 
         public static Font F(float size, FontStyle style)
         {
-            return new Font(FontFamily, size, style, GraphicsUnit.Point);
+            return new Font(FontFamily, size * 4f / 3f, style, GraphicsUnit.Pixel);
         }
 
         // 私有大篆字体（OFL 开源，随软件分发，无需用户安装）

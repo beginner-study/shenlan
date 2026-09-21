@@ -21,8 +21,20 @@ namespace DeepBlue
         public event EventHandler CloseClick;
 
         private bool _openEnabled;
-        private int _hover = -1; // 0=··· 1=× 2=按钮
+        private int _hover = -1; // 0=× 1=··· 2=主按钮
         private readonly Rectangle[] _hits = new Rectangle[3];
+        // 绘制用虚拟坐标（452x602 基准，OnPaint 里整体 ScaleTransform 放大）
+        private static readonly Rectangle[] _base = new Rectangle[]
+        {
+            new Rectangle(452 - 50, 18, 40, 40),  // ×（右）
+            new Rectangle(452 - 96, 18, 40, 40),  // ···（左）
+            new Rectangle(106, 516, 240, 54)      // 翻开新的一页
+        };
+
+        private static Rectangle Sc(Rectangle r)
+        {
+            return Ui.XR(r.X, r.Y, r.Width, r.Height);
+        }
 
         public CoverPanel()
         {
@@ -32,9 +44,9 @@ namespace DeepBlue
                 | ControlStyles.ResizeRedraw, true);
             Cursor = Cursors.Hand;
 
-            _hits[0] = new Rectangle(452 - 96, 18, 40, 40);  // ×
-            _hits[1] = new Rectangle(452 - 50, 18, 40, 40);  // ···
-            _hits[2] = new Rectangle(106, 516, 240, 54);      // 翻开新的一页
+            _hits[0] = Sc(_base[0]);
+            _hits[1] = Sc(_base[1]);
+            _hits[2] = Sc(_base[2]);
         }
 
         public bool OpenEnabled
@@ -48,33 +60,35 @@ namespace DeepBlue
             Graphics g = e.Graphics;
             g.SmoothingMode = SmoothingMode.HighQuality;
             g.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
+            // 全局 1.5 倍：以下按 452x602 虚拟坐标绘制
+            g.ScaleTransform(Ui.Scale, Ui.Scale);
 
             // 封面插画 + 大篆金字（合成位图）
             Bitmap cover = Assets.Cover;
             g.DrawImage(cover, new Rectangle(1, 1, 450, 600));
 
-            DrawGlassChip(g, _hits[1], _hover == 1);
-            DrawGlassChip(g, _hits[0], _hover == 0);
+            DrawGlassChip(g, _base[1], _hover == 1);
+            DrawGlassChip(g, _base[0], _hover == 0);
 
             // ×
             using (Pen p = new Pen(Color.FromArgb(235, 248, 244), 1.8F))
             {
                 p.StartCap = LineCap.Round; p.EndCap = LineCap.Round;
-                Rectangle r = _hits[0];
+                Rectangle r = _base[0];
                 g.DrawLine(p, r.X + 15, r.Y + 15, r.X + 25, r.Y + 25);
                 g.DrawLine(p, r.X + 25, r.Y + 15, r.X + 15, r.Y + 25);
             }
             // ···
             using (Brush b = new SolidBrush(Color.FromArgb(235, 248, 244)))
             {
-                Rectangle r = _hits[1];
+                Rectangle r = _base[1];
                 for (int i = 0; i < 3; i++)
                 {
                     g.FillEllipse(b, r.X + 11 + i * 5, r.Y + 18, 4.4F, 4.4F);
                 }
             }
 
-            DrawOpenButton(g, _hits[2], _hover == 2, _openEnabled);
+            DrawOpenButton(g, _base[2], _hover == 2, _openEnabled);
         }
 
         // 半透明白玻璃圆钮
@@ -123,7 +137,7 @@ namespace DeepBlue
                     : Color.FromArgb(150, 200, 195, 175)))
                 {
                     g.DrawString("翻 开 新 的 一 页",
-                        new Font("Microsoft YaHei UI", 11.5F, FontStyle.Bold),
+                        new Font("Microsoft YaHei UI", 15.33F, FontStyle.Bold, GraphicsUnit.Pixel),
                         t, new RectangleF(r.X, r.Y + 1, r.Width, r.Height), sf);
                 }
             }

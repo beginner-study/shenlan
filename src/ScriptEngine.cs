@@ -31,6 +31,10 @@ namespace DeepBlue
         {
             if (string.IsNullOrEmpty(s)) return null;
             DateTime d;
+            // 支持带时刻的截止（yyyy-MM-dd HH:mm）与纯日期两种格式
+            if (DateTime.TryParseExact(s, "yyyy-MM-dd HH:mm", null,
+                System.Globalization.DateTimeStyles.None, out d))
+                return d;
             if (DateTime.TryParseExact(s, "yyyy-MM-dd", null,
                 System.Globalization.DateTimeStyles.None, out d))
                 return d;
@@ -76,6 +80,20 @@ namespace DeepBlue
             return period + h12 + "点" + minute;
         }
 
+        // 截止时刻口语：今天/明天/后天/M月D日，带时刻则追加（18:00 → 晚上6点）
+        public static string DueSpeech(DateTime due, DateTime today)
+        {
+            int left = (int)(due.Date - today.Date).TotalDays;
+            string day;
+            if (left == 0) day = "今天";
+            else if (left == 1) day = "明天";
+            else if (left == 2) day = "后天";
+            else day = due.Month + "月" + due.Day + "日";
+            if (due.TimeOfDay > TimeSpan.Zero)
+                day += TimeToSpeech(due.ToString("HH:mm"));
+            return day;
+        }
+
         public static bool RecursOn(ScheduleItem it, DateTime day)
         {
             if (!it.IsRecurring) return false;
@@ -113,6 +131,14 @@ namespace DeepBlue
             return d != null && d.Value.Date == today.Date;
         }
 
+        // 单日、非重复、发生日已过且未勾完成 → 已过期（日程管理划线置底，可一键清理）
+        public static bool IsExpired(ScheduleItem it, DateTime today)
+        {
+            if (it.Done || it.IsRecurring) return false;
+            DateTime? d = ParseDate(it.Date);
+            return d != null && d.Value.Date < today.Date;
+        }
+
         public static List<ScheduleItem> EventsOn(List<ScheduleItem> items, DateTime day)
         {
             List<ScheduleItem> result = new List<ScheduleItem>();
@@ -138,16 +164,25 @@ namespace DeepBlue
 
         public static List<ScheduleItem> DeadlinesIn(List<ScheduleItem> items, int windowDays, DateTime today)
         {
+            return DeadlinesIn(items, windowDays, today, null);
+        }
+
+        // 提醒窗口：P0 提前 windowDays 天，P1 只提前 3 天；excludeIds 用于
+        // 排除今日安排里已连同截止一起播报过的事项（避免重复提醒）
+        public static List<ScheduleItem> DeadlinesIn(List<ScheduleItem> items, int windowDays, DateTime today, HashSet<int> excludeIds)
+        {
             List<KeyValuePair<DateTime, ScheduleItem>> hits =
                 new List<KeyValuePair<DateTime, ScheduleItem>>();
             foreach (ScheduleItem it in items)
             {
                 if (it.Done) continue;
+                if (excludeIds != null && excludeIds.Contains(it.Id)) continue;
                 if (it.Priority != "P0" && it.Priority != "P1") continue;
                 DateTime? due = ParseDate(it.Due);
                 if (due == null) continue;
+                int win = it.Priority == "P0" ? windowDays : Math.Min(windowDays, 3);
                 int left = (int)(due.Value.Date - today.Date).TotalDays;
-                if (left < 0 || left > windowDays) continue;
+                if (left < 0 || left > win) continue;
                 hits.Add(new KeyValuePair<DateTime, ScheduleItem>(due.Value.Date, it));
             }
             hits.Sort(delegate (KeyValuePair<DateTime, ScheduleItem> a, KeyValuePair<DateTime, ScheduleItem> b)
@@ -174,7 +209,7 @@ namespace DeepBlue
 
             if (s.SecDate)
             {
-                parts.Add(Greeting(now.Hour) + "。" + CnDate(today) + "，" + WeekName(today) + "。");
+                parts.Add("今天是" + CnDate(today) + "，" + WeekName(today) + "。");
             }
 
             if (s.WeatherOn && weather != null && WeatherEngine.IsFresh(weather))
@@ -182,6 +217,8 @@ namespace DeepBlue
                 string w = WeatherEngine.Describe(weather);
                 if (w.Length > 0) parts.Add(w);
             }
+
+            HashSet<int> dueMentioned = new HashSet<int>();
 
             if (s.SecToday)
             {
@@ -197,18 +234,26 @@ namespace DeepBlue
                     {
                         string line = ev.Priority == "P0" ? "重要，" : "";
                         if (!string.IsNullOrEmpty(ev.Time))
-                            line += TimeToSpeech(ev.Time) + "，" + ev.Title;
+                            line += TimeToSpeech(ev.Time) + "时需要开展" + ev.Title;
                         else
                             line += "另外，" + ev.Title;
                         if (!string.IsNullOrEmpty(ev.Note)) line += "，" + ev.Note;
                         parts.Add(line + "。");
+                        // 今天要进行且有截止日的高优先级任务：紧跟紧急句，
+                        // 并在下方截止提醒段落中排除（避免重复播报）
+                        DateTime? due = ParseDate(ev.Due);
+                        if (due != null && (ev.Priority == "P0" || ev.Priority == "P1"))
+                        {
+                            parts.Add("该任务紧急程度高，请于" + DueSpeech(due.Value, today) + "前完成。");
+                            dueMentioned.Add(ev.Id);
+                        }
                     }
                 }
             }
 
             if (s.SecDue)
             {
-                List<ScheduleItem> dls = DeadlinesIn(items, s.WindowDays, today);
+                List<ScheduleItem> dls = DeadlinesIn(items, s.WindowDays, today, dueMentioned);
                 if (dls.Count > 0)
                 {
                     StringBuilder sb = new StringBuilder();

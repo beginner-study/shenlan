@@ -104,11 +104,42 @@ namespace DeepBlue
             btnNew.Anchor = AnchorStyles.Top | AnchorStyles.Right;
             btnNew.Click += delegate { ShowEditor(null); };
             toolbar.Controls.Add(btnNew);
+
+            Button btnClean = Ui.GhostButton("清理过期", 104, 34);
+            btnClean.Anchor = AnchorStyles.Top | AnchorStyles.Right;
+            btnClean.Click += delegate { CleanExpired(); };
+            toolbar.Controls.Add(btnClean);
+
             toolbar.Resize += delegate
             {
                 btnNew.Location = new Point(toolbar.Width - btnNew.Width - 24, 13);
+                btnClean.Location = new Point(toolbar.Width - btnNew.Width - 24 - 112, 13);
             };
             btnNew.Location = new Point(toolbar.Width - btnNew.Width - 24, 13);
+            btnClean.Location = new Point(toolbar.Width - btnNew.Width - 24 - 112, 13);
+        }
+
+        // 一键删除所有已过期的单日事项
+        private void CleanExpired()
+        {
+            List<ScheduleItem> expired = new List<ScheduleItem>();
+            foreach (ScheduleItem it in _store.Items)
+            {
+                if (ScriptEngine.IsExpired(it, DateTime.Today)) expired.Add(it);
+            }
+            if (expired.Count == 0)
+            {
+                MessageBox.Show("没有已过期的事项。", AppInfo.Name,
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+            DialogResult r = MessageBox.Show(
+                "共 " + expired.Count + " 项已过期事项，确定全部删除吗？",
+                AppInfo.Name, MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (r != DialogResult.Yes) return;
+            foreach (ScheduleItem it in expired) _store.Items.Remove(it);
+            _store.Save();
+            Render();
         }
 
         private void BuildEditor()
@@ -181,7 +212,8 @@ namespace DeepBlue
 
             _fDue = new DateTimePicker();
             _fDue.Format = DateTimePickerFormat.Custom;
-            _fDue.CustomFormat = "yyyy-MM-dd";
+            _fDue.CustomFormat = "yyyy-MM-dd HH:mm";
+            _fDue.ShowUpDown = true;
             _fDue.ShowCheckBox = true;
             _fDue.Checked = false;
             _fDue.Location = new Point(72, 92);
@@ -347,7 +379,7 @@ namespace DeepBlue
             string dueStr = null;
             if (_fDue.Checked)
             {
-                dueStr = ScriptEngine.ToDateStr(_fDue.Value.Date);
+                dueStr = _fDue.Value.ToString("yyyy-MM-dd HH:mm");
                 if (recurIdx == 0 && _fDue.Value.Date < _fDate.Value.Date)
                 {
                     _fErr.Text = "截止日期不能早于发生日期"; return;
@@ -444,9 +476,15 @@ namespace DeepBlue
             List<KeyValuePair<DateTime, ScheduleItem>> dated =
                 new List<KeyValuePair<DateTime, ScheduleItem>>();
             List<ScheduleItem> undated = new List<ScheduleItem>();
+            List<ScheduleItem> expiredItems = new List<ScheduleItem>();
 
             foreach (ScheduleItem it in items)
             {
+                if (ScriptEngine.IsExpired(it, DateTime.Today))
+                {
+                    expiredItems.Add(it);
+                    continue;
+                }
                 DateTime? occ = ScriptEngine.NextOccurrence(it, DateTime.Today);
                 if (occ != null) dated.Add(new KeyValuePair<DateTime, ScheduleItem>(occ.Value, it));
                 else undated.Add(it);
@@ -495,6 +533,24 @@ namespace DeepBlue
                 }
             }
 
+            // 已过期事项划线置底（仿手机日程），可用工具栏「清理过期」一键删除
+            if (expiredItems.Count > 0)
+            {
+                y = AddGroupHeader("已过期 · 可用右上角「清理过期」批量删除", false, y, inner);
+                expiredItems.Sort(delegate (ScheduleItem a, ScheduleItem b)
+                {
+                    DateTime? da = ScriptEngine.ParseDate(a.Date);
+                    DateTime? db = ScriptEngine.ParseDate(b.Date);
+                    int c = (db ?? DateTime.MinValue).CompareTo(da ?? DateTime.MinValue);
+                    if (c != 0) return c;
+                    return string.CompareOrdinal(a.Time ?? "99:99", b.Time ?? "99:99");
+                });
+                foreach (ScheduleItem it in expiredItems)
+                {
+                    y = AddItemRow(it, y, inner);
+                }
+            }
+
             _list.ResumeLayout();
         }
 
@@ -521,6 +577,9 @@ namespace DeepBlue
 
         private int AddItemRow(ScheduleItem it, int y, int width)
         {
+            bool expired = ScriptEngine.IsExpired(it, DateTime.Today);
+            bool dimmed = it.Done || expired;
+
             Panel p = new Panel();
             p.Location = new Point(0, y);
             p.Width = width;
@@ -533,20 +592,20 @@ namespace DeepBlue
             badge.Width = 44;
             badge.Height = 24;
             badge.Location = new Point(12, 17);
-            badge.BackColor = Ui.PriorityColor(it.Priority);
+            badge.BackColor = dimmed ? Ui.Rule : Ui.PriorityColor(it.Priority);
             badge.ForeColor = Color.White;
             badge.Font = Ui.F(8.5F, FontStyle.Bold);
             badge.TextAlign = ContentAlignment.MiddleCenter;
             p.Controls.Add(badge);
 
             Label title = new Label();
-            title.Text = it.Title;
+            title.Text = it.Title + (expired ? "（已过期）" : "");
             title.AutoSize = false;
             title.Width = Math.Max(160, width - 64 - 250);
             title.Height = 26;
             title.Location = new Point(66, 9);
-            title.Font = Ui.F(9.5F, it.Done ? FontStyle.Strikeout : FontStyle.Bold);
-            title.ForeColor = it.Done ? Ui.Muted : Ui.Ink;
+            title.Font = Ui.F(9.5F, dimmed ? FontStyle.Strikeout : FontStyle.Bold);
+            title.ForeColor = dimmed ? Ui.Muted : Ui.Ink;
             title.AutoEllipsis = true;
             p.Controls.Add(title);
 
@@ -565,7 +624,9 @@ namespace DeepBlue
             {
                 int left = (int)(due.Value.Date - DateTime.Today).TotalDays;
                 string leftStr = left <= 0 ? "今天截止" : "剩 " + left + " 天";
-                parts.Add(due.Value.Month + "月" + due.Value.Day + "日截止 · " + leftStr);
+                string dueText = due.Value.Month + "月" + due.Value.Day + "日";
+                if (due.Value.TimeOfDay > TimeSpan.Zero) dueText += " " + due.Value.ToString("HH:mm");
+                parts.Add(dueText + "截止 · " + leftStr);
             }
             if (!string.IsNullOrEmpty(it.Note)) parts.Add("备注：" + it.Note);
             meta.Text = string.Join("  ·  ", parts.ToArray());

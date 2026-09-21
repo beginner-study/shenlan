@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Microsoft.Win32;
 
 namespace DeepBlue
 {
@@ -165,14 +166,22 @@ namespace DeepBlue
                 }
 
                 List<ScheduleItem> dls = ScriptEngine.DeadlinesIn(items, 7, today);
-                bool hasP0 = false, hasP2 = false;
+                bool hasP0 = false, hasP2 = false, hasP1in3 = false, hasP1in4 = false;
                 foreach (ScheduleItem d in dls)
                 {
                     if (d.Title == "季度报告") hasP0 = true;
                     if (d.Title == "物业费缴纳") hasP2 = true;
+                    if (d.Title == "报销单提交") hasP1in3 = true;
+                    if (d.Title == "P1四天后截止") hasP1in4 = true;
                 }
                 check("截止提醒-包含窗口内P0", hasP0);
                 check("截止提醒-排除P2(窗口内)", !hasP2);
+                check("截止提醒-P1提前3天内包含", hasP1in3);
+                check("截止提醒-P1超过3天排除", !hasP1in4);
+                check("截止提醒-P0仍提前7天", dls.Exists(delegate (ScheduleItem d)
+                {
+                    return d.Title == "车险续保办理";
+                }));
 
                 AppSettings ws = new AppSettings();
                 ws.WeatherOn = true;
@@ -190,10 +199,38 @@ namespace DeepBlue
                 AppSettings s = new AppSettings();
                 List<string> script = ScriptEngine.Compose(items, s);
                 check("播报稿-非空", script != null && script.Count > 0);
-                check("播报稿-以问候开头", script[0].StartsWith(ScriptEngine.Greeting(DateTime.Now.Hour)));
+                check("播报稿-以日期开头", script[0].StartsWith("今天是"));
                 check("播报稿-含今日安排计数", Join(script).Contains("你今天共有"));
+                check("播报稿-时间点句式",
+                    Join(script).Contains("晚上6点时需要开展PMD方案拓展"));
+                check("播报稿-紧急句",
+                    Join(script).Contains("中午12点时需要开展测试用案例") &&
+                    Join(script).Contains("该任务紧急程度高，请于明天晚上6点前完成"));
+                check("播报稿-紧急任务不重复进截止提醒",
+                    !Join(script).Contains("测试用案例，"));
+                check("截止提醒-P1窗口内正常提醒",
+                    Join(script).Contains("报销单提交"));
                 check("播报稿-含结束语", script[script.Count - 1].Contains("深蓝祝你度过顺利的一天"));
                 check("播报稿-含P0前缀(重要)", Join(script).Contains("重要，季度报告"));
+
+                DateTime? dt = ScriptEngine.ParseDate("2026-01-02 18:00");
+                check("日期解析-支持带时刻",
+                    dt != null && dt.Value.Hour == 18 && dt.Value.Minute == 0);
+                check("日期解析-纯日期仍支持",
+                    ScriptEngine.ParseDate("2026-01-02") != null &&
+                    ScriptEngine.ParseDate("2026-01-02").Value.Hour == 0);
+                check("截止口语-明天带时刻",
+                    ScriptEngine.DueSpeech(today.AddDays(1).AddHours(18), today) == "明天晚上6点");
+                check("截止口语-今天零点",
+                    ScriptEngine.DueSpeech(today, today) == "今天");
+                check("过期判定-昨日未完成", ScriptEngine.IsExpired(items.Find(
+                    delegate (ScheduleItem x) { return x.Id == 14; }), today));
+                check("过期判定-已完成不算", !ScriptEngine.IsExpired(items.Find(
+                    delegate (ScheduleItem x) { return x.Id == 10; }), today));
+                check("过期判定-重复事项不算", !ScriptEngine.IsExpired(items.Find(
+                    delegate (ScheduleItem x) { return x.Id == 5; }), today));
+                check("过期-今日安排不含过期事项", !ScriptEngine.EventsOn(items, today).Exists(
+                    delegate (ScheduleItem x) { return x.Id == 14; }));
 
                 s.SecToday = false;
                 s.SecDue = false;
@@ -236,6 +273,54 @@ namespace DeepBlue
                     loaded.Settings.QwLocation == "101010100");
                 check("存储-临时字段未序列化",
                     !File.ReadAllText(Path.Combine(Store.DataDir, "data.json")).Contains("ConfirmUntil"));
+
+                // 开机自启动：直接操作用户真实 HKCU Run 键，先记录原值，finally 恢复
+                const string runKeyPath = "Software\\Microsoft\\Windows\\CurrentVersion\\Run";
+                object runOriginal = null;
+                try
+                {
+                    using (RegistryKey k = Registry.CurrentUser.OpenSubKey(runKeyPath, false))
+                    {
+                        if (k != null) runOriginal = k.GetValue("DeepBlue");
+                    }
+                }
+                catch (Exception) { }
+                try
+                {
+                    check("自启动-写入后已启用",
+                        AutoStart.SetEnabled(true) && AutoStart.IsEnabled());
+                    string runExpected = "\"" +
+                        System.Windows.Forms.Application.ExecutablePath + "\"";
+                    string runActual = null;
+                    using (RegistryKey k = Registry.CurrentUser.OpenSubKey(runKeyPath, false))
+                    {
+                        if (k != null) runActual = k.GetValue("DeepBlue") as string;
+                    }
+                    check("自启动-键值带引号指向自身", runActual == runExpected);
+                    check("自启动-关闭后未启用",
+                        AutoStart.SetEnabled(false) && !AutoStart.IsEnabled());
+                    using (RegistryKey k = Registry.CurrentUser.OpenSubKey(runKeyPath, false))
+                    {
+                        check("自启动-键值已移除",
+                            k == null || k.GetValue("DeepBlue") == null);
+                    }
+                    check("自启动-关闭幂等", AutoStart.SetEnabled(false));
+                }
+                finally
+                {
+                    try
+                    {
+                        using (RegistryKey k = Registry.CurrentUser.OpenSubKey(runKeyPath, true))
+                        {
+                            if (k != null)
+                            {
+                                if (runOriginal == null) k.DeleteValue("DeepBlue", false);
+                                else k.SetValue("DeepBlue", runOriginal);
+                            }
+                        }
+                    }
+                    catch (Exception) { }
+                }
             }
             catch (Exception ex)
             {
@@ -328,6 +413,34 @@ namespace DeepBlue
             items[items.Count - 1].Date = ScriptEngine.ToDateStr(today);
             items[items.Count - 1].Priority = "P1";
             items[items.Count - 1].Done = true;
+
+            items.Add(new ScheduleItem());
+            items[items.Count - 1].Id = 11;
+            items[items.Count - 1].Title = "P1四天后截止";
+            items[items.Count - 1].Due = ScriptEngine.ToDateStr(today.AddDays(4));
+            items[items.Count - 1].Priority = "P1";
+
+            items.Add(new ScheduleItem());
+            items[items.Count - 1].Id = 12;
+            items[items.Count - 1].Title = "PMD方案拓展";
+            items[items.Count - 1].Date = ScriptEngine.ToDateStr(today);
+            items[items.Count - 1].Time = "18:00";
+            items[items.Count - 1].Priority = "P1";
+
+            items.Add(new ScheduleItem());
+            items[items.Count - 1].Id = 13;
+            items[items.Count - 1].Title = "测试用案例";
+            items[items.Count - 1].Date = ScriptEngine.ToDateStr(today);
+            items[items.Count - 1].Time = "12:00";
+            items[items.Count - 1].Due = today.AddDays(1).ToString("yyyy-MM-dd") + " 18:00";
+            items[items.Count - 1].Priority = "P1";
+
+            items.Add(new ScheduleItem());
+            items[items.Count - 1].Id = 14;
+            items[items.Count - 1].Title = "昨天已过期的事项";
+            items[items.Count - 1].Date = ScriptEngine.ToDateStr(today.AddDays(-1));
+            items[items.Count - 1].Time = "09:00";
+            items[items.Count - 1].Priority = "P2";
 
             return items;
         }

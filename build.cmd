@@ -1,5 +1,6 @@
 @echo off
 rem 深蓝 DeepBlue 编译脚本 - 使用 Windows 内置 .NET Framework 编译器，无需安装任何 SDK
+rem 2026-09-16：3D 翻页动画已移除，不再引用任何 WPF 组件（System.Speech 仍在 WPF 目录下）
 setlocal
 cd /d "%~dp0"
 
@@ -19,10 +20,6 @@ if not exist "%SPEECH%" (
   echo [ERROR] 未找到 System.Speech.dll，请确认系统为 Windows 10/11。
   exit /b 1
 )
-if not exist "%WPFDIR%\PresentationFramework.dll" (
-  echo [ERROR] 未找到 WPF 组件（3D 翻页动画需要），请确认系统为 Windows 10/11。
-  exit /b 1
-)
 
 if not exist build mkdir build
 if not exist build\assets mkdir build\assets
@@ -31,13 +28,9 @@ echo [1/2] 编译中...
 "%CSC%" /nologo /target:winexe /platform:anycpu /optimize+ /codepage:65001 ^
   /out:build\DeepBlue.exe ^
   /win32icon:assets\app.ico ^
+  /win32manifest:app.manifest ^
   /r:System.dll /r:System.Core.dll /r:System.Drawing.dll ^
   /r:System.Windows.Forms.dll ^
-  /r:"%WPFDIR%\WindowsBase.dll" ^
-  /r:"%WPFDIR%\PresentationCore.dll" ^
-  /r:"%WPFDIR%\PresentationFramework.dll" ^
-  /r:"%WPFDIR%\WindowsFormsIntegration.dll" ^
-  /r:"%WINDIR%\Microsoft.NET\Framework64\v4.0.30319\System.Xaml.dll" ^
   /r:"%SPEECH%" ^
   /r:System.Web.Extensions.dll ^
   src\*.cs

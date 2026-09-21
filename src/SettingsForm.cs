@@ -16,6 +16,7 @@ namespace DeepBlue
         private CheckBox _chkToday;
         private CheckBox _chkDue;
         private CheckBox _chkWeather;
+        private CheckBox _chkAutoStart;
         private TextBox _txtCity;
         private Button _btnSearch;
         private ComboBox _cboHits;
@@ -39,8 +40,8 @@ namespace DeepBlue
             Text = AppInfo.Name + " · 设置";
             StartPosition = FormStartPosition.CenterParent;
             FormBorderStyle = FormBorderStyle.Sizable;
-            Size = new Size(620, 892);
-            MinimumSize = new Size(580, 852);
+            Size = new Size(620, 972);
+            MinimumSize = new Size(580, 932);
             Font = Ui.F(9F);
             BackColor = Ui.Bg;
             Icon = MainForm.LoadIcon();
@@ -182,6 +183,16 @@ namespace DeepBlue
             _chkDue.Location = new Point(230, 78);
             c3.Controls.Add(_chkDue);
 
+            Panel cGen = AddCard(628, 88);
+            Label tGen = Ui.CardTitle("通用");
+            tGen.Location = new Point(20, 14);
+            cGen.Controls.Add(tGen);
+
+            _chkAutoStart = MakeToggle("开机自启动（登录 Windows 后自动运行深蓝）",
+                AutoStart.IsEnabled());
+            _chkAutoStart.Location = new Point(20, 48);
+            cGen.Controls.Add(_chkAutoStart);
+
             Panel c4 = AddCard(368, 244);
             Label t4 = Ui.CardTitle("天气");
             t4.Location = new Point(20, 14);
@@ -278,7 +289,7 @@ namespace DeepBlue
             UpdateCityNow();
             OnSourceChanged();
 
-            Panel c5 = AddCard(624, 96);
+            Panel c5 = AddCard(cGen.Bottom + 12, 96);
             Label t5 = Ui.CardTitle("关于");
             t5.Location = new Point(20, 14);
             c5.Controls.Add(t5);
@@ -304,17 +315,24 @@ namespace DeepBlue
             };
             c5.Controls.Add(repo);
 
+            // 保存/关闭置于「关于」卡片下方（动态计算，不依赖 ClientSize 锚定，
+            // 避免卡片堆叠后与底锚按钮重叠），并提升到 z 序最前确保可点击
             Button save = Ui.PrimaryButton("保存设置", 120, 40);
-            save.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            save.Location = new Point(20, ClientSize.Height - 60);
+            save.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            save.Location = new Point(20, c5.Bottom + 16);
             save.Click += delegate { SaveAll(); };
             Controls.Add(save);
 
             Button close = Ui.GhostButton("关闭", 80, 40);
-            close.Anchor = AnchorStyles.Bottom | AnchorStyles.Left;
-            close.Location = new Point(152, ClientSize.Height - 60);
+            close.Anchor = AnchorStyles.Top | AnchorStyles.Left;
+            close.Location = new Point(152, c5.Bottom + 16);
             close.Click += delegate { Close(); };
             Controls.Add(close);
+            save.BringToFront();
+            close.BringToFront();
+
+            ClientSize = new Size(ClientSize.Width, close.Bottom + 24);
+            MinimumSize = new Size(580, Size.Height);
         }
 
         private CheckBox MakeToggle(string text, bool value)
@@ -500,6 +518,8 @@ namespace DeepBlue
             _store.Settings.SecDue = _chkDue.Checked;
             _store.Settings.WeatherOn = _chkWeather.Checked;
             _store.Settings.WeatherSource = IsQwMode() ? "qweather" : "open-meteo";
+            // 开机自启动：写/删 HKCU Run 键（不进 settings.json，注册表即状态源）
+            bool autoOk = AutoStart.SetEnabled(_chkAutoStart.Checked);
             _store.Settings.QwHost = _txtQwHost.Text.Trim();
             _store.Settings.QwKey = _txtQwKey.Text.Trim();
             if (_pickName.Length > 0)
@@ -510,6 +530,11 @@ namespace DeepBlue
                 _store.Settings.QwLocation = IsQwMode() ? EffectiveQwLocation() : "";
             }
             _store.Save();
+            if (!autoOk)
+            {
+                MessageBox.Show("开机自启动设置未能写入注册表，请检查权限后重试。",
+                    AppInfo.Name, MessageBoxButtons.OK, MessageBoxIcon.Warning);
+            }
             if (_store.Settings.WeatherOn && _store.Settings.WeatherCity.Length == 0)
             {
                 MessageBox.Show(
